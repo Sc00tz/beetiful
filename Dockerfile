@@ -38,20 +38,17 @@ COPY requirements.txt .
 # Install Python dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Beets with the latest stable version and core plugins as extras
-# Beets 1.6.1 is the latest stable release and includes the 'plugin' command.
-RUN pip install --no-cache-dir 'beets==1.6.1' \
-    'beets[fetchart]' \
-    'beets[lyrics]' \
-    'beets[lastgenre]' \
-    'beets[discogs]' \
-    requests pillow mutagen
+# Install Beets 2.3.1 with all built-in plugins
+# No need for separate plugin installations since they're built-in now
+RUN pip install --no-cache-dir 'beets==2.3.1'
 
-# Install python-discogs-client and beautifulsoup4 separately, allowing failure
-# These might not always have compatible wheels for all architectures/Python versions
-# or might not be strictly necessary if beets[discogs] handles its own dependency.
-RUN pip install --no-cache-dir python-discogs-client || true
-RUN pip install --no-cache-dir beautifulsoup4 || true
+# Install optional dependencies for plugins that need them
+# Only install packages that actually exist and are needed
+RUN pip install --no-cache-dir \
+    requests \
+    pillow \
+    beautifulsoup4 \
+    langdetect
 
 # Copy application code
 COPY . .
