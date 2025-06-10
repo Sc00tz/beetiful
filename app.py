@@ -4,271 +4,27 @@ import subprocess
 import yaml
 import json
 import shlex
+import re
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
-import re
+
+# Import our modular services
+from beets_utils import get_beets_bin, clean_field, parse_stats
+from config_manager import (
+    AVAILABLE_PLUGINS, read_config, write_config, 
+    get_installed_plugins, create_default_config
+)
+from lyrics_service import get_track_lyrics, fetch_lyrics_for_track, set_track_lyrics
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# --- Configuration Paths ---
-beets_config_dir = os.getenv('BEETSDIR', os.path.expanduser('~/.config/beets'))
-config_path = os.path.join(beets_config_dir, 'config.yaml')
-
-# --- Helper Functions ---
-
-def get_beets_bin():
-    """Determine the beets executable path."""
-    try:
-        result = subprocess.run(['which', 'beet'], capture_output=True, text=True)
-        if result.returncode == 0 and result.stdout.strip():
-            return 'beet'
-    except:
-        pass
-    
-    # Fallback to common paths
-    fallback_paths = ['/usr/local/bin/beet', '/usr/bin/beet', 'beet']
-    for path in fallback_paths:
-        try:
-            result = subprocess.run([path, '--version'], capture_output=True, text=True)
-            if result.returncode == 0:
-                return path
-        except:
-            continue
-    
-    return 'beet'
-
+# Get beets binary path
 BEETS_BIN = get_beets_bin()
 
-# Updated plugin definitions for beets 2.3.1 (most are built-in now)
-AVAILABLE_PLUGINS = {
-    'fetchart': {
-        'built_in': True,
-        'description': 'Automatically fetch album artwork',
-        'config_template': {
-            'auto': True,
-            'cautious': True,
-            'cover_names': 'cover front art album folder',
-            'sources': 'filesystem coverart itunes amazon albumart'
-        }
-    },
-    'lyrics': {
-        'built_in': True,
-        'description': 'Automatically fetch song lyrics',
-        'config_template': {
-            'auto': True,
-            'sources': 'lyricwiki musixmatch genius'
-        }
-    },
-    'lastgenre': {
-        'built_in': True,
-        'description': 'Fetch genres from Last.fm',
-        'config_template': {
-            'auto': True,
-            'source': 'album'
-        }
-    },
-    'discogs': {
-        'built_in': True,
-        'description': 'Search and tag using Discogs.com',
-        'config_template': {
-            'token': 'YOUR_DISCOGS_TOKEN'
-        }
-    },
-    'chroma': {
-        'built_in': True,
-        'description': 'Acoustic fingerprinting using Chromaprint/AcoustID',
-        'config_template': {
-            'auto': True
-        }
-    },
-    'web': {
-        'built_in': True,
-        'description': 'Provides a web interface for beets',
-        'config_template': {
-            'host': '0.0.0.0',
-            'port': 8337
-        }
-    },
-    'embedart': {
-        'built_in': True,
-        'description': 'Embed album art into music files',
-        'config_template': {
-            'auto': True
-        }
-    },
-    'export': {
-        'built_in': True,
-        'description': 'Export library data to various formats'
-    },
-    'replaygain': {
-        'built_in': True,
-        'description': 'Analyze and store ReplayGain values',
-        'config_template': {
-            'auto': True
-        }
-    },
-    'badfiles': {
-        'built_in': True,
-        'description': 'Detect and handle corrupt or unreadable music files'
-    },
-    'convert': {
-        'built_in': True,
-        'description': 'Convert audio files to different formats',
-        'config_template': {
-            'format': 'mp3',
-            'dest': '/path/to/converted_music'
-        }
-    },
-    'duplicates': {
-        'built_in': True,
-        'description': 'Find and manage duplicate tracks'
-    },
-    'edit': {
-        'built_in': True,
-        'description': 'Edit metadata from a text editor'
-    },
-    'info': {
-        'built_in': True,
-        'description': 'Show detailed track information'
-    },
-    'missing': {
-        'built_in': True,
-        'description': 'Find missing tracks in albums'
-    },
-    'playlist': {
-        'built_in': True,
-        'description': 'Generate and manage playlists'
-    },
-    'random': {
-        'built_in': True,
-        'description': 'Randomly select tracks'
-    },
-    'smartplaylist': {
-        'built_in': True,
-        'description': 'Generate smart playlists based on queries',
-        'config_template': {
-            'relative_to': '/music',
-            'playlist_dir': '/music/playlists'
-        }
-    }
-}
-
-def create_default_config():
-    """Create a default beets configuration."""
-    return {
-        'directory': '/music',
-        'library': os.path.join(beets_config_dir, 'musiclibrary.db'),
-        'import': {
-            'move': False,
-            'copy': False,
-            'write': True,
-            'autotag': True,
-            'resume': True,
-            'incremental': True,
-            'duplicate_action': 'skip'
-        },
-        'paths': {
-            'default': '$albumartist/$album%aunique{}/$track $title',
-            'singleton': 'Non-Album/$artist/$title',
-            'comp': 'Compilations/$album%aunique{}/$track $title'
-        },
-        'replace': {
-            '[\/]': '_',
-            '^\.': '_',
-            '[\x00-\x1f]': '_',
-            '[<>:"\?\*\|]': '_',
-            '\.$': '_',
-            '\s+$': ''
-        },
-        'plugins': [],
-        'ui': {
-            'color': True
-        }
-    }
-
-def read_config():
-    """Reads the beets configuration from config.yaml."""
-    if not os.path.exists(config_path):
-        default_config = create_default_config()
-        write_config(default_config)
-        return default_config
-    
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f) or {}
-            return config
-    except Exception as e:
-        app.logger.error(f"Error reading config.yaml: {e}")
-        return create_default_config()
-
-def write_config(config_data):
-    """Writes the beets configuration to config.yaml."""
-    try:
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
-        with open(config_path, 'w') as f:
-            yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
-        return True
-    except Exception as e:
-        app.logger.error(f"Error writing config.yaml: {e}")
-        return False
-
-def get_installed_plugins():
-    """Get list of built-in plugins available in beets 2.3.1."""
-    installed_plugins = []
-    
-    try:
-        # Check which plugins exist in the beetsplug directory
-        import beets
-        import pkg_resources
-        
-        # Get the path to beetsplug
-        beets_dist = pkg_resources.get_distribution('beets')
-        beetsplug_path = None
-        
-        # Try to find beetsplug directory
-        possible_paths = [
-            os.path.join(os.path.dirname(beets.__file__), '..', 'beetsplug'),
-            os.path.join(beets_dist.location, 'beetsplug'),
-            '/home/beetiful/.local/lib/python3.11/site-packages/beetsplug'
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                beetsplug_path = path
-                break
-        
-        if beetsplug_path:
-            app.logger.info(f"Found beetsplug directory at: {beetsplug_path}")
-            
-            for plugin_name in AVAILABLE_PLUGINS.keys():
-                # Check if plugin file exists
-                plugin_file = os.path.join(beetsplug_path, f'{plugin_name}.py')
-                plugin_dir = os.path.join(beetsplug_path, plugin_name)
-                
-                if os.path.exists(plugin_file) or os.path.exists(plugin_dir):
-                    installed_plugins.append(plugin_name)
-                    app.logger.debug(f"Found plugin: {plugin_name}")
-        else:
-            app.logger.warning("Could not find beetsplug directory")
-            # Fallback: assume all built-in plugins are available
-            installed_plugins = [name for name, info in AVAILABLE_PLUGINS.items() if info.get('built_in', False)]
-        
-    except Exception as e:
-        app.logger.error(f"Error checking installed plugins: {e}")
-        # Fallback: assume all built-in plugins are available
-        installed_plugins = [name for name, info in AVAILABLE_PLUGINS.items() if info.get('built_in', False)]
-    
-    app.logger.info(f"Available built-in plugins: {installed_plugins}")
-    return installed_plugins
-
-def clean_field(value, field_name):
-    """Clean field values and handle cases where beets returns literal field names"""
-    if not value or value.strip() == '' or value == f'${field_name}':
-        return None
-    return value.strip()
+# --- Utility Functions ---
 
 def is_path_safe(path):
     """Checks if a path is safe to browse."""
@@ -295,29 +51,6 @@ def format_timestamp(timestamp):
         return dt.strftime('%Y-%m-%d %H:%M')
     except:
         return ''
-
-def parse_stats(output):
-    """Parse the stats output from beets."""
-    lines = output.splitlines()
-    stats = {}
-    
-    for line in lines:
-        line = line.strip()
-        if ':' in line:
-            key, value = line.split(':', 1)
-            key = key.strip().lower()
-            value = value.strip()
-            
-            if 'tracks' in key:
-                stats['total_tracks'] = value
-            elif 'albums' in key:
-                stats['total_albums'] = value
-            elif 'artists' in key:
-                stats['total_artists'] = value
-            elif 'total size' in key:
-                stats['total_size'] = value.split()[0]
-    
-    return stats
 
 # --- Routes ---
 
@@ -567,7 +300,6 @@ def toggle_plugin():
         return jsonify({'message': f"Plugin '{plugin_name}' {'enabled' if enable else 'disabled'}."})
     return jsonify({'error': 'Failed to update plugin status.'}), 500
 
-# Remove the install endpoint since plugins are built-in
 @app.route('/api/plugins/install', methods=['POST'])
 def install_plugin():
     data = request.json
@@ -587,7 +319,6 @@ def install_plugin():
             'already_available': True
         })
     
-    # For any external plugins (if we add them in the future)
     return jsonify({'error': 'External plugin installation not yet implemented for beets 2.3.1'}), 501
 
 @app.route('/api/plugins/config/<plugin_name>', methods=['GET', 'POST'])
@@ -635,11 +366,9 @@ def execute_command():
     args = []
     if args_string:
         try:
-            # Use shlex to properly parse arguments with spaces and quotes
             args = shlex.split(args_string)
         except ValueError as e:
             app.logger.warning(f"Failed to parse args with shlex: {e}, falling back to simple split")
-            # If shlex fails, try to handle it manually
             args = []
             current_arg = ""
             in_quotes = False
@@ -662,13 +391,6 @@ def execute_command():
     full_cmd = [BEETS_BIN, command] + args
     
     try:
-        if command == 'import':
-            app.logger.info(f"Executing import command: {full_cmd}")
-            # For debugging, also log the raw args
-            app.logger.info(f"Raw args string: '{args_string}'")
-            app.logger.info(f"Parsed args: {args}")
-        
-        # Use subprocess with proper argument handling
         process = subprocess.run(
             full_cmd, 
             capture_output=True, 
@@ -683,10 +405,6 @@ def execute_command():
             'error': process.stderr
         })
     except subprocess.CalledProcessError as e:
-        app.logger.error(f"Command failed: {full_cmd}")
-        app.logger.error(f"Exit code: {e.returncode}")
-        app.logger.error(f"Stdout: {e.stdout}")
-        app.logger.error(f"Stderr: {e.stderr}")
         return jsonify({
             'message': 'Command failed', 
             'output': e.stdout, 
@@ -742,63 +460,39 @@ def browse_files():
         app.logger.error(f"Error browsing path '{path}': {e}")
         return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
-# Add lyrics endpoints
+# Lyrics endpoints using the modular service
 @app.route('/api/library/lyrics/<track_id>', methods=['GET', 'POST'])
 def handle_lyrics(track_id):
     if request.method == 'GET':
         try:
-            # Get lyrics from beets database
-            cmd = [BEETS_BIN, 'list', '--format', '$lyrics', f'id:{track_id}']
-            process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
-            lyrics = process.stdout.strip()
-            
-            # If no lyrics in database, check if lyrics plugin can fetch them
-            if not lyrics or lyrics == '$lyrics':
-                lyrics = None
-            
-            return jsonify({'lyrics': lyrics})
-            
-        except subprocess.CalledProcessError as e:
-            app.logger.error(f"Error getting lyrics: {e.stderr}")
-            return jsonify({'error': f"Failed to get lyrics: {e.stderr}"}), 500
+            result = get_track_lyrics(track_id, BEETS_BIN)
+            return jsonify(result)
         except Exception as e:
-            app.logger.error(f"Error getting lyrics: {e}")
             return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
     
     elif request.method == 'POST':
         try:
             data = request.json
             lyrics = data.get('lyrics', '')
+            result = set_track_lyrics(track_id, lyrics, BEETS_BIN)
             
-            # Set lyrics using beets modify command
-            cmd = [BEETS_BIN, 'modify', f'id:{track_id}', f'lyrics={lyrics}']
-            process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+            if 'error' in result:
+                return jsonify(result), result.get('status', 500)
+            return jsonify(result)
             
-            return jsonify({'message': 'Lyrics updated successfully'})
-            
-        except subprocess.CalledProcessError as e:
-            app.logger.error(f"Error setting lyrics: {e.stderr}")
-            return jsonify({'error': f"Failed to set lyrics: {e.stderr}"}), 500
         except Exception as e:
-            app.logger.error(f"Error setting lyrics: {e}")
             return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
 @app.route('/api/library/fetch-lyrics/<track_id>', methods=['POST'])
 def fetch_lyrics(track_id):
-    """Fetch lyrics using the beets lyrics plugin."""
+    """Fetch lyrics using LRCLib API directly, with beets plugin as fallback."""
     try:
-        # Use beets lyrics plugin to fetch lyrics
-        cmd = [BEETS_BIN, 'lyrics', f'id:{track_id}']
-        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
-        
-        return jsonify({'message': 'Lyrics fetch attempted', 'output': process.stdout})
-        
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Error fetching lyrics: {e.stderr}")
-        return jsonify({'error': f"Failed to fetch lyrics: {e.stderr}"}), 500
+        result, status_code = fetch_lyrics_for_track(track_id, BEETS_BIN)
+        return jsonify(result), status_code
     except Exception as e:
-        app.logger.error(f"Error fetching lyrics: {e}")
         return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
+@app.route('/api/stats')
 def get_stats():
     try:
         cmd = [BEETS_BIN, 'stats']

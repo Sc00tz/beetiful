@@ -37,16 +37,14 @@ plugins:
 lyrics:
   auto: true
   force: true
-  sources: genius
-  fallback: ''
   synced: true
+  sources: genius musixmatch
+  fallback: ''
   lrc_file: true
-  lrc_dir: ''
+  lrc_dir: /music/lyrics
   lrclib:
-    source_weight: 1
+    source_weight: 1.0
   genius:
     source_weight: 0.8
-  lyricwiki:
-    source_weight: 0.6
   musixmatch:
-    source_weight: 0.4
+    source_weight: 0.6
