@@ -1,9 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     fetchLibrary();
     debugLibrary();
-    
-    
-    
 });
 
 let currentPage = 1;
@@ -22,15 +19,14 @@ function fetchLibrary() {
                 showPage(currentPage);    
             } else {
                 console.error('Unexpected data format:', data);
-                document.getElementById('libraryResults').innerHTML = '<tr><td colspan="5">No library data found.</td></tr>';
+                document.getElementById('libraryResults').innerHTML = '<tr><td colspan="8">No library data found.</td></tr>';
             }
         })
         .catch(error => {
             console.error('Error fetching library data:', error);
-            document.getElementById('libraryResults').innerHTML = '<tr><td colspan="5">Error loading library data.</td></tr>';
+            document.getElementById('libraryResults').innerHTML = '<tr><td colspan="8">Error loading library data.</td></tr>';
         });
 }
-
 
 function showPage(page) {
     const start = (page - 1) * itemsPerPage;
@@ -41,23 +37,28 @@ function showPage(page) {
     updatePaginationControls();
 }
 
-
 function applyFilters() {
     const filterTitle = document.getElementById('filterTitle').value.toLowerCase();
     const filterArtist = document.getElementById('filterArtist').value.toLowerCase();
     const filterAlbum = document.getElementById('filterAlbum').value.toLowerCase();
     const filterGenre = document.getElementById('filterGenre').value.toLowerCase();
+    const filterYear = document.getElementById('filterYear')?.value.toLowerCase() || '';
+    const filterBPM = document.getElementById('filterBPM')?.value.toLowerCase() || '';
+    const filterComposer = document.getElementById('filterComposer')?.value.toLowerCase() || '';
 
     filteredData = libraryData.filter(item => {
         return (
             (!filterTitle || item.title.toLowerCase().includes(filterTitle)) &&
             (!filterArtist || item.artist.toLowerCase().includes(filterArtist)) &&
             (!filterAlbum || item.album.toLowerCase().includes(filterAlbum)) &&
-            (!filterGenre || item.genre.toLowerCase().includes(filterGenre))
+            (!filterGenre || item.genre.toLowerCase().includes(filterGenre)) &&
+            (!filterYear || item.year.toLowerCase().includes(filterYear)) &&
+            (!filterBPM || item.bpm.toLowerCase().includes(filterBPM)) &&
+            (!filterComposer || item.composer.toLowerCase().includes(filterComposer))
         );
     });
 
-    
+    // Clear sorting when filtering
     document.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
     sortOrder = { column: null, direction: 'asc' };
 
@@ -66,31 +67,49 @@ function applyFilters() {
 }
 
 function clearFilters() {
-    
+    // Clear all filter inputs
     document.getElementById('filterTitle').value = '';
     document.getElementById('filterArtist').value = '';
     document.getElementById('filterAlbum').value = '';
     document.getElementById('filterGenre').value = '';
-
     
-    applyFilters();
+    // Clear additional filters if they exist
+    const filterYear = document.getElementById('filterYear');
+    const filterBPM = document.getElementById('filterBPM');
+    const filterComposer = document.getElementById('filterComposer');
+    
+    if (filterYear) filterYear.value = '';
+    if (filterBPM) filterBPM.value = '';
+    if (filterComposer) filterComposer.value = '';
+
+    // Reset filtered data
+    filteredData = libraryData;
+    currentPage = 1;
+
+    // Clear sorting
+    document.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
+    sortOrder = { column: null, direction: 'asc' };
+
+    showPage(currentPage);
 }
 
-
-
-document.querySelectorAll('.filter-input').forEach(input => {
-    input.addEventListener('input', () => {
-        applyFilters();
+// Add event listeners for all filter inputs
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.filter-input').forEach(input => {
+        input.addEventListener('input', () => {
+            applyFilters();
+        });
     });
 });
+
 function sortByColumn(column) {
-    
+    // Clear previous sort indicators
     document.querySelectorAll('#tableHeaders th').forEach(th => {
         th.classList.remove('asc', 'desc');
         th.querySelector('.sort-arrow')?.remove(); 
     });
 
-    
+    // Toggle sort direction
     if (sortOrder.column === column) {
         sortOrder.direction = sortOrder.direction === 'asc' ? 'desc' : 'asc';
     } else {
@@ -98,7 +117,7 @@ function sortByColumn(column) {
         sortOrder.direction = 'asc';
     }
 
-    
+    // Sort the data
     filteredData.sort((a, b) => {
         const aValue = Object.values(a)[column]?.toLowerCase() || '';
         const bValue = Object.values(b)[column]?.toLowerCase() || '';
@@ -108,38 +127,18 @@ function sortByColumn(column) {
         return 0;
     });
 
-    
+    // Update visual indicator
     const header = document.querySelector(`#tableHeaders th[data-column="${column}"]`);
-    header.classList.add(sortOrder.direction); 
-    const arrow = document.createElement('span');
-    arrow.className = 'sort-arrow';
-    arrow.innerHTML = sortOrder.direction === 'asc' ? '▲' : '▼';
-    header.appendChild(arrow);
+    if (header) {
+        header.classList.add(sortOrder.direction); 
+        const arrow = document.createElement('span');
+        arrow.className = 'sort-arrow';
+        arrow.innerHTML = sortOrder.direction === 'asc' ? '▲' : '▼';
+        header.appendChild(arrow);
+    }
 
     showPage(currentPage); 
 }
-
-
-
-function clearFilters() {
-    document.getElementById('filterTitle').value = '';
-    document.getElementById('filterArtist').value = '';
-    document.getElementById('filterAlbum').value = '';
-    document.getElementById('filterGenre').value = '';
-
-    
-    filteredData = libraryData;
-    currentPage = 1;
-
-    
-    document.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
-    sortOrder = { column: null, direction: 'asc' };
-
-    showPage(currentPage);
-}
-
-
-
 
 function updatePaginationControls() {
     const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -166,7 +165,7 @@ function updatePaginationControls() {
     };
     paginationControls.appendChild(prevButton);
 
-    
+    // Show page numbers
     const maxButtons = 5;
     const startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
     const endPage = Math.min(totalPages, startPage + maxButtons - 1);
@@ -208,56 +207,96 @@ function updatePaginationControls() {
     paginationControls.appendChild(pageInfo);
 }
 
-
-
-
-document.getElementById('tableHeaders').addEventListener('click', (event) => {
-    const column = event.target.dataset.column;
-    if (column !== undefined) {
-        sortByColumn(parseInt(column));
-    }
+// Add click event listener for table headers
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('tableHeaders').addEventListener('click', (event) => {
+        const column = event.target.dataset.column;
+        if (column !== undefined) {
+            sortByColumn(parseInt(column));
+        }
+    });
 });
+
 function populateLibrary(items) {
     const libraryResults = document.getElementById('libraryResults');
     libraryResults.innerHTML = '';  
 
-    items.forEach(item => {
+    items.forEach((item, index) => {
         const row = document.createElement('tr');
+        row.id = `track-row-${index}`;
         row.innerHTML = `
-            <td>${item.title || ''}</td>  <!-- Title -->
-            <td>${item.artist || ''}</td>  <!-- Artist -->
-            <td>${item.album || ''}</td>  <!-- Album -->
-            <td>${item.genre || ''}</td>  <!-- Genre -->
+            <td title="${item.title || ''}">${item.title || ''}</td>
+            <td title="${item.artist || ''}">${item.artist || ''}</td>
+            <td title="${item.album || ''}">${item.album || ''}</td>
+            <td title="${item.genre || ''}">${item.genre || ''}</td>
+            <td title="${item.year || ''}">${item.year || ''}</td>
+            <td title="${item.bpm || ''}">${item.bpm || ''}</td>
+            <td title="${item.composer || ''}">${item.composer || ''}</td>
             <td>
-                <button class="btn btn-primary btn-sm" 
-                    onclick='editTrack(${JSON.stringify(item)})'>
+                <button class="btn btn-primary btn-sm" onclick="testEdit(${index})">
                     Edit
                 </button>
             </td>
         `;
         libraryResults.appendChild(row);
     });
+    
+    // Store items globally so we can access them
+    window.currentLibraryItems = items;
 }
 
-function editTrack(track) {
+// Simple test function
+function testEdit(index) {
+    console.log('testEdit called with index:', index);
+    
+    if (window.currentLibraryItems && window.currentLibraryItems[index]) {
+        const track = window.currentLibraryItems[index];
+        console.log('Track data:', track);
+        editTrack(track, index);
+    } else {
+        console.error('No track found at index:', index);
+        alert('No track data found');
+    }
+}
+
+function editTrack(track, rowIndex) {
+    console.log('=== editTrack called ===');
+    console.log('Track:', track);
+    console.log('Row Index:', rowIndex);
+    
+    // Close any existing edit forms first
+    closeEditForm();
+    
+    // Find the target row by ID
+    const targetRow = document.getElementById(`track-row-${rowIndex}`);
+    console.log('Looking for row ID:', `track-row-${rowIndex}`);
+    console.log('Found target row:', targetRow);
+    
+    if (!targetRow) {
+        console.error('Could not find target row:', `track-row-${rowIndex}`);
+        alert('Could not find target row');
+        return;
+    }
+    
+    console.log('Creating form HTML...');
+    
+    // Create edit form HTML
     const formHtml = `
-        <h5>Edit Track</h5>
-        <label>Title: <input type="text" id="editTitle" class="form-control" value="${track.title}"></label>
-        <label>Artist: <input type="text" id="editArtist" class="form-control" value="${track.artist}"></label>
-        <label>Album: <input type="text" id="editAlbum" class="form-control" value="${track.album}"></label>
-        <label>Year: <input type="text" id="editYear" class="form-control" value="${track.year}"></label>
-        <label>Genre: <input type="text" id="editGenre" class="form-control" value="${track.genre}"></label>
-        <label>Composer: <input type="text" id="editComposer" class="form-control" value="${track.composer}"></label>
-        <label>BPM: <input type="text" id="editBpm" class="form-control" value="${track.bpm}"></label>
-        <label>Comments: <textarea id="editComments" class="form-control"> ${track.comments}</textarea></label>
-        <button class="btn btn-warning mt-2" onclick="confirmAction('remove', '${track.title}', '${track.artist}', '${track.album}')">Remove</button>
-        <button class="btn btn-danger mt-2" onclick="confirmAction('delete', '${track.title}', '${track.artist}', '${track.album}')">Delete</button>
-        <button class="btn btn-success mt-2" onclick="saveTrack('${track.title}', '${track.artist}', '${track.album}')">Save</button>
-        
-        <button class="btn btn-secondary mt-2" onclick="closeEditForm()">Cancel</button>
+        <tr class="edit-form-row">
+            <td colspan="8" style="background-color: #252525; padding: 20px;">
+                <h3 style="color: white;">EDIT FORM TEST</h3>
+                <p style="color: white;">Editing: ${track.title} by ${track.artist}</p>
+                <button onclick="closeEditForm()" style="background: red; color: white; padding: 10px;">Close</button>
+            </td>
+        </tr>
     `;
-    const editFormContainer = document.getElementById('editFormContainer');
-    editFormContainer.innerHTML = formHtml; 
+    
+    console.log('Inserting form HTML...');
+    
+    // Insert the form row right after the clicked row
+    targetRow.insertAdjacentHTML('afterend', formHtml);
+    
+    console.log('Form should be inserted now');
 }
 
 function saveTrack(originalTitle, originalArtist, originalAlbum) {
@@ -343,14 +382,11 @@ function deleteTrack(title, artist, album) {
     });
 }
 
-
 function closeEditForm() {
-    const editFormContainer = document.getElementById('editFormContainer');
-    editFormContainer.innerHTML = '';  
-    editFormContainer.style.display = 'none';  
+    // Remove any existing edit form rows
+    const editRows = document.querySelectorAll('.edit-form-row');
+    editRows.forEach(row => row.remove());
 }
-
-
 
 function debugLibrary() {
     fetch('/api/debug_library')
@@ -361,8 +397,6 @@ function debugLibrary() {
         })
         .catch(error => console.error('Error fetching debug data:', error));
 }
-
-
 
 function confirmAction(action, title, artist, album) {
     const actionText = action === 'delete' ? 'delete this track? This action cannot be undone.' : 'remove this track from the library?';

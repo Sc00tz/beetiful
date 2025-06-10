@@ -1,246 +1,476 @@
+/* Beetiful - Fresh CSS from scratch */
+
 :root {
     --beet-color: #8a2b6f;
     --dark-bg: #1e1e1e;
     --sidebar-bg: #252525;
-    --table-bg: #353535; 
+    --table-bg: #353535;
     --input-bg: #333333;
     --border-color: #555555;
     --highlight-color: #4b2647;
     --primary-btn: #007bff;
 }
 
+/* Base styles */
 body {
     background-color: var(--dark-bg);
-    color: #cfcfcf;
+    color: #ffffff;
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
 }
 
-.sidebar-container, .form-container {
-    background-color: var(--sidebar-bg);
-    padding: 20px;
-    height: 100vh;
-    overflow-y: auto;
-    border: 1px solid #444;
+/* Navigation Bar - FORCE TOP POSITION */
+.navbar {
+    background-color: var(--sidebar-bg) !important;
+    border-bottom: 2px solid var(--border-color) !important;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    width: 100%;
 }
 
-.container-fluid {
-    height: 100vh;
-    display: flex;
-    flex-direction: row;
+.navbar-brand {
+    color: var(--beet-color) !important;
+    font-weight: bold;
+    font-size: 1.5rem;
 }
 
-.table-container {
-    background-color: var(--table-bg);
-    overflow: auto;
-    max-height: 85vh;
-    padding: 20px;
+/* Tab Navigation */
+.nav-tabs {
+    border-bottom: none !important;
+    background: transparent !important;
 }
 
-input, select, textarea, button {
+.nav-tabs .nav-link {
     background-color: var(--input-bg);
-    color: #ffffff;
     border: 1px solid var(--border-color);
-    border-radius: 3px;
+    color: #cfcfcf;
+    border-radius: 8px 8px 0 0;
+    margin-right: 5px;
+    padding: 8px 16px;
+    transition: all 0.3s ease;
 }
 
-input, select, textarea {
-    box-shadow: 0 0 0 0.2rem var(--beet-color);
-}
-
-button:hover, input:focus, select:focus, textarea:focus {
+.nav-tabs .nav-link:hover {
     background-color: #444;
-    border-color: #666;
+    color: #ffffff;
+    border-color: var(--beet-color);
 }
 
-.tighten-table th, .tighten-table td {
-    padding: 0.5rem;
-    font-size: 0.9rem;
+.nav-tabs .nav-link.active {
+    background-color: var(--beet-color);
+    border-color: var(--beet-color);
+    color: #ffffff;
+}
+
+/* Tab Content */
+.tab-content {
+    min-height: calc(100vh - 70px);
+    background-color: var(--dark-bg);
+}
+
+.tab-pane {
+    background-color: var(--dark-bg);
+}
+
+/* Cards */
+.card.bg-dark {
+    background-color: var(--sidebar-bg) !important;
+    border-color: var(--border-color) !important;
+}
+
+.card-title {
+    color: #ffffff !important;
+}
+
+/* Forms */
+.form-control.bg-dark {
+    background-color: var(--input-bg) !important;
+    border-color: var(--border-color) !important;
+    color: #ffffff !important;
+}
+
+.form-control.bg-dark:focus {
+    background-color: var(--input-bg) !important;
+    border-color: var(--beet-color) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 0 0.2rem rgba(138, 43, 111, 0.25);
+}
+
+.form-select.bg-dark {
+    background-color: var(--input-bg) !important;
+    border-color: var(--border-color) !important;
+    color: #ffffff !important;
+}
+
+/* Command Builder Form Controls */
+#commandBuilder input,
+#commandBuilder select,
+#commandBuilder textarea {
+    background-color: var(--input-bg) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+#commandBuilder input:focus,
+#commandBuilder select:focus,
+#commandBuilder textarea:focus {
+    background-color: var(--input-bg) !important;
+    border-color: var(--beet-color) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 0 0.2rem rgba(138, 43, 111, 0.25);
+}
+
+/* Checkbox and Label Colors - Force White Text */
+#commandBuilder label,
+#command-options label {
+    color: #ffffff !important;
+}
+
+#commandBuilder input[type="checkbox"] {
+    accent-color: var(--beet-color);
+}
+
+/* Command Options Area */
+#command-options {
+    color: #ffffff !important;
+}
+
+#command-options * {
+    color: #ffffff !important;
+}
+
+/* Tables */
+.table-dark {
+    --bs-table-bg: var(--table-bg);
+    --bs-table-border-color: var(--border-color);
+    color: #ffffff;
+}
+
+.table-secondary {
+    --bs-table-bg: var(--highlight-color);
+    --bs-table-color: #ffffff;
+}
+
+.table th {
+    border-color: var(--border-color);
+    cursor: pointer;
+    position: relative;
+}
+
+.table td {
+    border-color: var(--border-color);
     max-width: 150px;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
-    color: #ffffff;
 }
 
-.tighten-table th {
-    background-color: var(--highlight-color);
-    color: #ffffff;
+.table tbody tr:hover {
+    background-color: #444 !important;
 }
 
-.tighten-table td {
-    background-color: var(--table-bg); 
-    color: #ffffff;
+/* Buttons */
+.btn-primary {
+    background-color: var(--beet-color) !important;
+    border-color: var(--beet-color) !important;
 }
 
-.table-striped tbody tr:hover {
-    background-color: #444;
+.btn-primary:hover {
+    background-color: #6d2050 !important;
+    border-color: #6d2050 !important;
 }
 
+.btn-outline-danger:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+/* Pagination */
 #paginationControls {
     display: flex;
     justify-content: center;
-    margin-bottom: 5px;
+    gap: 5px;
+    margin: 15px 0;
 }
 
 #paginationControls button {
-    margin: 0 3px;
-    padding: 3px 8px;
-    font-size: 0.9rem;
-}
-
-#clearFilters {
-    margin: 10px;
     padding: 5px 10px;
-    background-color: var(--primary-btn);
-    color: #fff;
-    border: none;
-    border-radius: 5px;
+    font-size: 0.9em;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: #ffffff;
+    border-radius: 4px;
     cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-#clearFilters:hover {
-    background-color: #0056b3; 
+#paginationControls button:hover:not(:disabled) {
+    background-color: var(--beet-color);
 }
 
-#logo-container {
-    position: absolute;
-    bottom: 50px;
-    right: 120px; 
-    z-index: 1000;
+#paginationControls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#paginationControls button.active-page {
+    background-color: var(--beet-color);
+    border-color: var(--beet-color);
+}
+
+/* Pre elements */
+pre {
+    background-color: var(--input-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    color: #cfcfcf !important;
+    border-radius: 4px !important;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* Badges */
+.badge.bg-primary {
+    background-color: var(--beet-color) !important;
+}
+
+/* Plugin Manager Styles */
+.plugin-card {
+    background-color: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    transition: all 0.3s ease;
+}
+
+.plugin-card:hover {
+    background-color: #2d2d2d;
+    border-color: var(--beet-color);
+}
+
+.plugin-header {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 250px; 
-    height: 250px; 
-    background-color: #252525;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.plugin-name {
+    font-weight: bold;
+    font-size: 1em;
+    color: #ffffff;
+    margin: 0;
+    flex: 1;
+    min-width: 120px;
+}
+
+.plugin-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.plugin-badge {
+    padding: 2px 6px;
     border-radius: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    font-size: 0.7em;
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
-#beetiful-logo {
-    width: 100%;
-    height: auto;
-    opacity: 0.9;
-    transition: opacity 0.3s ease;
+.badge-enabled {
+    background-color: #28a745;
+    color: white;
 }
 
-#beetiful-logo:hover {
-    opacity: 1;
+.badge-disabled {
+    background-color: #6c757d;
+    color: white;
 }
 
-th input[type="text"] {
-    width: 100%;
-    display: block;
-    margin-top: 5px;
+.badge-installed {
+    background-color: #17a2b8;
+    color: white;
 }
 
-input[type="text"]:not(:placeholder-shown) {
-    border: 2px solid var(--highlight-color);
+.badge-not-installed {
+    background-color: #ffc107;
+    color: #212529;
 }
 
-.active-page {
+.plugin-description {
+    color: #b0b0b0;
+    font-size: 0.85em;
+    margin-bottom: 12px;
+    line-height: 1.3;
+}
+
+.plugin-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.plugin-btn {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.plugin-btn-primary {
     background-color: var(--primary-btn);
     color: white;
-    border: none;
-    outline: none;
-    cursor: default;
-    pointer-events: none;
+}
+
+.plugin-btn-primary:hover {
+    background-color: #0056b3;
+}
+
+.plugin-btn-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.plugin-btn-success:hover {
+    background-color: #1e7e34;
+}
+
+.plugin-btn-warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.plugin-btn-warning:hover {
+    background-color: #e0a800;
+}
+
+.plugin-btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.plugin-btn-danger:hover {
+    background-color: #c82333;
+}
+
+.plugin-btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.plugin-btn-secondary:hover {
+    background-color: #545b62;
+}
+
+.plugin-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.plugin-section-title {
+    color: var(--beet-color);
+    font-size: 1em;
     font-weight: bold;
+    margin: 15px 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
 }
 
-@media (max-width: 768px) {
-    .container-fluid {
-        flex-direction: column;
-    }
-
-    .sidebar-container, .main-content, .form-container {
-        width: 100%;
-        padding: 10px;
-        border: none;
-    }
+.plugin-section-title:first-child {
+    margin-top: 0;
 }
 
-#commandBuilder input,
-#commandBuilder select,
-#commandBuilder button,
-#commandBuilder textarea {
-    background-color: #333333;
-    color: #ffffff;
-    border: none; 
-    box-shadow: inset 0 0 0 0.2rem rgba(138, 43, 111, 1); 
-    border-radius: 3px; 
-    padding: 5px;
-    margin: 5px 0;
+.plugin-loading {
+    text-align: center;
+    padding: 20px;
+    color: #b0b0b0;
+    font-style: italic;
 }
 
-
-#commandBuilder input:hover,
-#commandBuilder select:hover,
-#commandBuilder button:hover,
-#commandBuilder textarea:hover,
-#commandBuilder input:focus,
-#commandBuilder select:focus,
-#commandBuilder textarea:focus {
-    background-color: #444444; 
-    outline: none; 
+.plugin-empty {
+    text-align: center;
+    padding: 20px;
+    color: #b0b0b0;
+    font-style: italic;
 }
 
-
-#importOptions {
-    padding: 10px;
-    background-color: #2e2e2e; 
-    color: #ffffff;
+/* File Browser Styles */
+.browser-container {
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 5px;
+    padding: 15px;
 }
 
+.directory-row:hover {
+    background-color: var(--highlight-color) !important;
+}
 
-#beetImportButton {
-    background-color: #4b2647; 
-    color: #ffffff;
-    border: none; 
-    padding: 10px 20px;
+.directory-name {
     cursor: pointer;
-    border-radius: 5px;
+    transition: color 0.3s ease;
 }
 
-#beetImportButton:hover {
-    background-color: #f805e8; 
+.directory-name:hover {
+    color: var(--beet-color);
 }
 
-
-#commandBuilder input::placeholder {
-    color: #777777;
+.modal-content.bg-dark {
+    background-color: var(--sidebar-bg) !important;
+    border-color: var(--border-color);
 }
 
-th {
-    cursor: pointer; 
-    position: relative; 
-    padding-right: 20px; 
+.btn-close-white {
+    filter: invert(1) grayscale(100%) brightness(200%);
 }
 
-
-th.sortable::after {
-    content: ''; 
+/* Input group styling for file browser */
+.input-group .form-control.bg-dark {
+    background-color: var(--input-bg) !important;
+    border-color: var(--border-color);
+    color: #ffffff;
 }
 
-
-.sort-arrow {
-    position: absolute;
-    right: 5px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 0.8em;
-    color: #cfcfcf; 
+.input-group .form-control.bg-dark:focus {
+    background-color: var(--input-bg) !important;
+    border-color: var(--beet-color);
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(138, 43, 111, 0.25);
 }
 
-
-th.asc .sort-arrow {
-    content: '▲'; 
+.input-group-text.bg-secondary {
+    background-color: var(--highlight-color) !important;
+    border-color: var(--border-color);
+    color: #ffffff;
 }
 
-th.desc .sort-arrow {
-    content: '▼'; 
+/* Responsive Design */
+@media (max-width: 768px) {
+    .navbar .container-fluid {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .nav-tabs {
+        justify-content: center;
+    }
+    
+    .table th, .table td {
+        font-size: 0.75em;
+        padding: 4px;
+        max-width: 100px;
+    }
+    
+    .form-control-sm {
+        font-size: 0.7em;
+    }
 }
-

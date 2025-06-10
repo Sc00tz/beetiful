@@ -19,7 +19,6 @@ function getStats() {
         });
 }
 
-
 function setupCommandDropdown() {
     const commandDropdown = document.getElementById('command');
     commandDropdown.innerHTML = `
@@ -33,8 +32,6 @@ function setupCommandDropdown() {
     commandDropdown.addEventListener('change', updateCommandOptions);
 }
 
-
-
 function updateCommandOptions() {
     const command = document.getElementById('command').value;
     const optionsDiv = document.getElementById('command-options');
@@ -45,11 +42,16 @@ function updateCommandOptions() {
         case 'import':
             optionsDiv.innerHTML = `
                 <h3>Import Options</h3>
-                <label><input type="checkbox" value="-A" onchange="updatePreview()"> Don’t autotag; just import</label><br>
-                <label><input type="checkbox" value="-W" onchange="updatePreview()"> Don’t write new tags to files</label><br>
-                <label><input type="checkbox" value="-C" onchange="updatePreview()"> Don’t copy imported files; leave them where they are</label><br>
+                <label><input type="checkbox" value="-A" onchange="updatePreview()"> Don't autotag; just import</label><br>
+                <label><input type="checkbox" value="-W" onchange="updatePreview()"> Don't write new tags to files</label><br>
+                <label><input type="checkbox" value="-C" onchange="updatePreview()"> Don't copy imported files; leave them where they are</label><br>
                 <label><input type="checkbox" value="-m" onchange="updatePreview()"> Move imported files to your music directory</label><br>
-                <label><input type="text" id="importPath" placeholder="Enter path to music folder or track" oninput="updatePreview()"></label><br>
+                <div class="d-flex align-items-center mb-2">
+                    <input type="text" id="importPath" class="form-control me-2" placeholder="Enter path to music folder or track" oninput="updatePreview()">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="browseForImportPath()">
+                        <i class="fas fa-folder-open"></i> Browse
+                    </button>
+                </div>
                 <label><input type="text" id="importLog" placeholder="Logfile path for skipped albums (optional)" oninput="updatePreview()"></label><br>
                 <label><input type="text" id="additionalImportArgs" placeholder="Additional arguments (e.g., specific track names)" oninput="updatePreview()"></label><br>
             `;
@@ -80,7 +82,7 @@ function updateCommandOptions() {
                 <label><input type="text" id="modifyFields" placeholder="FIELD=VALUE pairs" oninput="updatePreview()"></label><br>
                 <label><input type="checkbox" value="-I" onchange="updatePreview()"> Prevent cascading changes to tracks</label><br>
                 <label><input type="checkbox" value="-M" onchange="updatePreview()"> Prevent moving items</label><br>
-                <label><input type="checkbox" value="-W" onchange="updatePreview()"> Don’t write tags to files</label><br>
+                <label><input type="checkbox" value="-W" onchange="updatePreview()"> Don't write tags to files</label><br>
                 <label><input type="checkbox" value="-a" onchange="updatePreview()"> Modify album fields</label><br>
                 <label><input type="checkbox" value="-y" onchange="updatePreview()"> Automatically confirm changes</label><br>
                 <label><input type="text" id="modifyQuery" placeholder="Enter query" oninput="updatePreview()"></label><br>
@@ -185,12 +187,6 @@ function formatCommandOutput(output) {
     return output;
 }
 
-
-
-
-
-
-
 function viewConfig() {
     fetch('/api/config')
         .then(response => response.text())  
@@ -219,4 +215,15 @@ function editConfig() {
     });
 }
 
-
+// File browser integration
+function browseForImportPath() {
+    if (typeof openFileBrowser === 'function') {
+        const currentPath = document.getElementById('importPath').value || '/music';
+        openFileBrowser((selectedPath) => {
+            document.getElementById('importPath').value = selectedPath;
+            updatePreview();
+        }, currentPath);
+    } else {
+        alert('File browser not available. Please ensure filebrowser.js is loaded.');
+    }
+}
