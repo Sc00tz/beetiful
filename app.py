@@ -8,13 +8,28 @@ import stat
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
+import re # Add this line
 
 load_dotenv()
 
 app = Flask(__name__)
 
+# --- Configuration Paths ---
 beets_config_dir = os.getenv('BEETSDIR', os.path.expanduser('~/.config/beets'))
 config_path = os.path.join(beets_config_dir, 'config.yaml')
+
+# --- Helper Functions ---
+
+def get_beets_bin():
+    """Determine the beets executable path."""
+    # Check if beets is available directly in PATH
+    if subprocess.run(['which', 'beet'], capture_output=True).returncode == 0:
+        return 'beet'
+    # Fallback to a common Python script path if 'beet' isn't directly in PATH
+    # This might need adjustment based on the Docker environment
+    return '/usr/local/bin/beet' # Common path for pip-installed executables in Docker
+
+BEETS_BIN = get_beets_bin()
 
 # Plugin definitions with their pip package names and descriptions
 AVAILABLE_PLUGINS = {
@@ -46,590 +61,410 @@ AVAILABLE_PLUGINS = {
     },
     'discogs': {
         'pip_name': 'beets[discogs]',
-        'description': 'Search and tag from Discogs database',
+        'description': 'Search and tag using Discogs.com',
         'config_template': {
-            'source_weight': 0.5
-        }
-    },
-    'replaygain': {
-        'pip_name': 'beets[replaygain]',
-        'description': 'Calculate ReplayGain values',
-        'config_template': {
-            'auto': False,
-            'backend': 'command',
-            'command': 'mp3gain'
+            'token': 'YOUR_DISCOGS_TOKEN' # User should replace this
         }
     },
     'chroma': {
         'pip_name': 'beets[chroma]',
-        'description': 'Use acoustic fingerprinting for matching',
+        'description': 'Acoustic fingerprinting using Chromaprint/AcoustID',
         'config_template': {
             'auto': True
         }
     },
+    'web': {
+        'pip_name': 'beets[web]',
+        'description': 'Provides a web interface for beets',
+        'config_template': {
+            'host': '0.0.0.0',
+            'port': 8337
+        }
+    },
+    'embedart': {
+        'pip_name': 'beets[embedart]',
+        'description': 'Embed album art into music files'
+    },
+    'export': {
+        'pip_name': 'beets[export]',
+        'description': 'Export library data to various formats (e.g., JSON, CSV)'
+    },
+    'replaygain': {
+        'pip_name': 'beets[replaygain]',
+        'description': 'Analyze and store ReplayGain values',
+        'config_template': {
+            'auto': True
+        }
+    },
+    'badfiles': {
+        'pip_name': 'beets[badfiles]',
+        'description': 'Detect and handle corrupt or unreadable music files'
+    },
     'convert': {
         'pip_name': 'beets[convert]',
-        'description': 'Convert audio between formats',
+        'description': 'Convert audio files to different formats',
         'config_template': {
-            'dest': '/converted',
+            'auto': False,
             'format': 'mp3',
-            'formats': {
-                'mp3': 'ffmpeg -i $source -y -vn -acodec mp3 -ab 320k $dest'
-            }
+            'dest': '/path/to/converted_music' # User should configure this
         }
-    },
-    'duplicates': {
-        'pip_name': 'beets',  # Built-in plugin
-        'description': 'Find and list duplicate tracks',
-        'config_template': {}
-    },
-    'info': {
-        'pip_name': 'beets',  # Built-in plugin
-        'description': 'Show detailed track information',
-        'config_template': {}
-    },
-    'missing': {
-        'pip_name': 'beets',  # Built-in plugin
-        'description': 'List missing albums from artists',
-        'config_template': {}
-    },
-    'play': {
-        'pip_name': 'beets',  # Built-in plugin
-        'description': 'Play tracks from the command line',
-        'config_template': {
-            'command': 'mpv $args'
-        }
-    },
-    'scrub': {
-        'pip_name': 'beets',  # Built-in plugin
-        'description': 'Remove extraneous metadata',
-        'config_template': {
-            'auto': False
-        }
-    },
-    'smart_playlist': {
-        'pip_name': 'beets',  # Built-in plugin
-        'description': 'Generate smart playlists',
-        'config_template': {}
     }
 }
 
-@app.route('/api/config', methods=['GET'])
-def view_config():
-    """Fetch the configuration as raw text."""
-    try:
-        with open(config_path, 'r') as file:
-            config_text = file.read()
-        return config_text, 200
-    except FileNotFoundError:
-        return "Config file not found.", 404
-    except Exception as e:
-        return f"Error loading config: {str(e)}", 500
 
-@app.route('/api/config', methods=['POST'])
-def edit_config():
-    """Save the configuration as raw text."""
+def read_config():
+    """Reads the beets configuration from config.yaml."""
+    if not os.path.exists(config_path):
+        return {}
     try:
-        config_text = request.data.decode('utf-8')  
-        with open(config_path, 'w') as file:
-            file.write(config_text)  
-        return jsonify({'message': 'Configuration updated successfully'}), 200
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
     except Exception as e:
-        return jsonify({'error': f"Failed to save configuration: {str(e)}"}), 500
+        app.logger.error(f"Error reading config.yaml: {e}")
+        return {}
+
+def write_config(config_data):
+    """Writes the beets configuration to config.yaml."""
+    try:
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        with open(config_path, 'w') as f:
+            yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
+        return True
+    except Exception as e:
+        app.logger.error(f"Error writing config.yaml: {e}")
+        return False
+
+def get_installed_plugins():
+    """Get a list of currently installed beets plugins."""
+    try:
+        cmd = [BEETS_BIN, 'version']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        output = process.stdout
+        # Example output line: 'plugins: fetchart lyrics'
+        plugins_line = next((line for line in output.splitlines() if 'plugins:' in line), None)
+        if plugins_line:
+            # Extract plugin names, strip 'plugins:' and whitespace
+            plugins_str = plugins_line.split('plugins:')[1].strip()
+            return [p.strip() for p in plugins_str.split(' ') if p.strip()]
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error running 'beets version': {e.stderr}")
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred while getting installed plugins: {e}")
+    return []
+
+def get_plugin_pip_name(plugin_name):
+    """Maps a plugin name to its pip package name."""
+    return AVAILABLE_PLUGINS.get(plugin_name, {}).get('pip_name', f'beets[{plugin_name}]')
+
+# --- Routes ---
 
 @app.route('/')
-def home():
+def index():
     return render_template('index.html')
 
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    """Fetch statistics from beets."""
-    result = subprocess.run(['beet', 'stats'], capture_output=True, text=True)
-    if result.returncode == 0:
-        stats = parse_stats(result.stdout)
-        return jsonify(stats)
-    else:
-        return jsonify({'error': result.stderr}), 500
-
-@app.route('/api/run-command', methods=['POST'])
-def run_command():
-    """Run a command using beets."""
-    command = request.json.get('command')
-    options = request.json.get('options', [])
-    arguments = request.json.get('arguments', [])
-
-    full_command = ['beet', command] + options + arguments
-
-    try:
-        result = subprocess.run(full_command, capture_output=True, text=True)
-        if result.returncode == 0:
-            return jsonify({'output': result.stdout.splitlines()})
-        else:
-            return jsonify({'error': result.stderr}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/library', methods=['GET'])
+# API to get all library items
+@app.route('/api/library')
 def get_library():
-    """Fetch the library items including genre information."""
-    result = subprocess.run(['beet', 'list', '-f', '$title@@$artist@@$album@@$genre@@$year@@$bpm@@$composer@@$comments'], capture_output=True, text=True)
-    if result.returncode == 0:
-        items = [parse_library_item(line) for line in result.stdout.splitlines()]
+    try:
+        # Use 'beet list -a' to get all items in a structured format
+        cmd = [BEETS_BIN, 'list', '-a', '--format', '$id\t$title\t$artist\t$album\t$genre\t$year\t$length\t$bitrate\t$path']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        output_lines = process.stdout.strip().split('\n')
+        
+        items = []
+        for line in output_lines:
+            if not line:
+                continue
+            parts = line.split('\t')
+            if len(parts) == 9:
+                # Safely parse fields, handling literal '$' variables and specific formats
+                
+                # Year parsing (from string to int, handling '$year' or non-digits)
+                year = None
+                year_str = parts[5]
+                if year_str.isdigit():
+                    try:
+                        year = int(year_str)
+                    except ValueError:
+                        pass # year remains None
+
+                # Length parsing (from MM:SS or $length to seconds as float)
+                length = None
+                length_str = parts[6]
+                if length_str and length_str != '$length': # Exclude empty string and literal '$length'
+                    match = re.match(r'(\d+):(\d+)', length_str)
+                    if match:
+                        minutes = int(match.group(1))
+                        seconds = int(match.group(2))
+                        length = float(minutes * 60 + seconds)
+                    else:
+                        # Fallback for raw float if not MM:SS (e.g., if Beets outputs raw seconds)
+                        try:
+                            length = float(length_str)
+                        except ValueError:
+                            pass # length remains None if not parseable
+
+                # Bitrate parsing (from Nkbps or $bitrate to N as int)
+                bitrate = None
+                bitrate_str = parts[7]
+                if bitrate_str and bitrate_str != '$bitrate': # Exclude empty string and literal '$bitrate'
+                    match = re.match(r'(\d+)kbps', bitrate_str)
+                    if match:
+                        bitrate = int(match.group(1))
+                    else:
+                        # Fallback for raw int if not Nkbps
+                        try:
+                            bitrate = int(bitrate_str)
+                        except ValueError:
+                            pass # bitrate remains None if not parseable
+
+                item = {
+                    'id': parts[0],
+                    'title': parts[1], # Will be '$title' if not expanded (though for id:1 it's 'Mamma Mia')
+                    'artist': parts[2], # Will be '$artist' if not expanded (though for id:1 it's 'ABBA')
+                    'album': parts[3],
+                    'genre': parts[4],
+                    'year': year,
+                    'length': length,
+                    'bitrate': bitrate,
+                    'path': parts[8]
+                }
+                items.append(item)
+            else:
+                app.logger.warning(f"Skipping malformed line from 'beet list': {line}")
+
         return jsonify({'items': items})
-    else:
-        return jsonify({'error': result.stderr}), 500
-
-def parse_library_item(line):
-    """Parse a library item from the list output."""
-    fields = line.split('@@')  
-    return {
-        'title': fields[0] if len(fields) > 0 else '',
-        'artist': fields[1] if len(fields) > 1 else '',
-        'album': fields[2] if len(fields) > 2 else '',
-        'genre': fields[3] if len(fields) > 3 else '',
-        'year': fields[4] if len(fields) > 4 else '',
-        'bpm': fields[5] if len(fields) > 5 else '',
-        'composer': fields[6] if len(fields) > 6 else '',
-        'comments': fields[7] if len(fields) > 7 else ''
-    }
-
-@app.route('/api/library/remove', methods=['POST'])
-def remove_track():
-    data = request.json
-    title = data.get('title')
-    artist = data.get('artist')
-    album = data.get('album')
-
-    id_command = ['beet', 'list', '-f', '$id', f'title:{title}', f'artist:{artist}', f'album:{album}']
-    id_result = subprocess.run(id_command, capture_output=True, text=True)
-
-    if id_result.returncode != 0 or not id_result.stdout.strip():
-        print(f"Error finding track ID: {id_result.stderr}")
-        return jsonify({'error': 'Track not found for removal.'}), 500
-
-    track_id = id_result.stdout.strip()
-    print(f"Found track ID: {track_id}")
-
-    remove_command = ['beet', 'remove', '-f', f'id:{track_id}']
-    print(f"Executing remove command: {' '.join(remove_command)}")
-
-    try:
-        result = subprocess.run(remove_command, capture_output=True, text=True, check=True)
-        print("Track removed from library.")
-        return jsonify({'message': 'Track removed from library.'})
     except subprocess.CalledProcessError as e:
-        print(f"Error removing track: {e.stderr}")
-        return jsonify({'error': e.stderr}), 500
+        app.logger.error(f"Error listing library: {e.stderr}", exc_info=True)
+        return jsonify({'error': f"Failed to list library: {e.stderr}"}), 500
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred while getting library: {e}", exc_info=True)
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
-@app.route('/api/library/delete', methods=['POST'])
-def delete_track():
-    data = request.json
-    print(f"Delete request received with data: {data}")  
-    title = data.get('title')
-    artist = data.get('artist')
-    album = data.get('album')
 
-    if not title or not artist or not album:
-        print("Error: Missing required fields for delete command.")  
-        return jsonify({'error': 'Missing required fields'}), 400
+@app.route('/api/config', methods=['GET', 'POST'])
+def handle_config():
+    if request.method == 'GET':
+        config = read_config()
+        return jsonify(config)
+    elif request.method == 'POST':
+        config_data = request.json
+        if write_config(config_data):
+            return jsonify({'message': 'Configuration saved successfully. Restart the application for changes to take effect.'})
+        return jsonify({'error': 'Failed to save configuration.'}), 500
 
-    command = ['beet', 'remove', '-f', f'title:{title}', f'artist:{artist}', f'album:{album}']
-    print(f"Executing delete command: {' '.join(command)}") 
-
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        print("Track deleted successfully.")  
-        return jsonify({'message': 'Track removed from library.'})
-    except subprocess.CalledProcessError as e:
-        print(f"Error deleting track: {e.stderr}")  
-        return jsonify({'error': e.stderr}), 500
-
-@app.route('/api/library/update', methods=['POST'])
-def update_track():
-    data = request.json
-    original_title = data.get('originalTitle', '')
-    original_artist = data.get('originalArtist', '')
-    original_album = data.get('originalAlbum', '')
-    updated_track = data.get('updatedTrack', {})
-
-    command = ['beet', 'modify', '-y', f'title:{original_title}', f'artist:{original_artist}', f'album:{original_album}']
-
-    for field, value in updated_track.items():
-        if value:  
-            command.append(f'{field}={value}')
-
-    print(f"Executing command: {' '.join(command)}")
-
-    result = subprocess.run(command, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        print(f"Error: {result.stderr}")
-        return jsonify({'error': result.stderr}), 500
-
-    return jsonify({'message': 'Track updated successfully.'})
-
-# Plugin Manager Routes
 @app.route('/api/plugins', methods=['GET'])
 def get_plugins():
-    """Get list of available and installed plugins."""
-    try:
-        # Get current config
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
+    config = read_config()
+    enabled_plugins = config.get('plugins', [])
+    installed_plugins = get_installed_plugins()
+
+    all_plugins_status = []
+    for name, details in AVAILABLE_PLUGINS.items():
+        is_installed = name in installed_plugins
+        is_enabled = name in enabled_plugins
         
-        enabled_plugins = config.get('plugins', [])
-        
-        # Check which plugins are installed
-        result = {
-            'available': [],
-            'enabled': enabled_plugins
+        plugin_info = {
+            'name': name,
+            'description': details.get('description', 'No description available.'),
+            'installed': is_installed,
+            'enabled': is_enabled,
+            'config_template': details.get('config_template', {})
         }
-        
-        for plugin_name, plugin_info in AVAILABLE_PLUGINS.items():
-            plugin_data = {
-                'name': plugin_name,
-                'description': plugin_info['description'],
-                'enabled': plugin_name in enabled_plugins,
-                'installed': is_plugin_installed(plugin_name, plugin_info['pip_name']),
-                'pip_name': plugin_info['pip_name']
-            }
-            result['available'].append(plugin_data)
-        
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': f"Error loading plugins: {str(e)}"}), 500
+        all_plugins_status.append(plugin_info)
+    
+    return jsonify({'available': all_plugins_status, 'enabled_in_config': enabled_plugins})
+
+
+@app.route('/api/plugins/toggle', methods=['POST'])
+def toggle_plugin():
+    data = request.json
+    plugin_name = data.get('plugin_name')
+    enable = data.get('enable')
+
+    if not plugin_name:
+        return jsonify({'error': 'Plugin name is required.'}), 400
+
+    config = read_config()
+    current_plugins = set(config.get('plugins', []))
+
+    if enable:
+        current_plugins.add(plugin_name)
+    else:
+        current_plugins.discard(plugin_name)
+    
+    config['plugins'] = sorted(list(current_plugins)) # Ensure list and sorted
+
+    if write_config(config):
+        return jsonify({'message': f"Plugin '{plugin_name}' {'enabled' if enable else 'disabled'}."})
+    return jsonify({'error': 'Failed to update plugin status.'}), 500
+
 
 @app.route('/api/plugins/install', methods=['POST'])
 def install_plugin():
-    """Install a plugin via pip."""
+    data = request.json
+    plugin_name = data.get('plugin_name')
+
+    if not plugin_name:
+        return jsonify({'error': 'Plugin name is required.'}), 400
+
+    pip_package_name = get_plugin_pip_name(plugin_name)
+
     try:
-        data = request.json
-        plugin_name = data.get('plugin_name')
-        
-        if plugin_name not in AVAILABLE_PLUGINS:
-            return jsonify({'error': 'Unknown plugin'}), 400
-        
-        plugin_info = AVAILABLE_PLUGINS[plugin_name]
-        pip_name = plugin_info['pip_name']
-        
-        # Install the plugin
-        result = subprocess.run(
-            ['pip', 'install', '--no-cache-dir', pip_name], 
-            capture_output=True, text=True
+        # Use a subprocess to run pip install
+        # Consider using a virtual environment or ensuring correct permissions
+        process = subprocess.run(
+            ['pip', 'install', pip_package_name],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=os.environ.copy() # Pass current environment variables
         )
-        
-        if result.returncode == 0:
-            return jsonify({
-                'message': f'Plugin {plugin_name} installed successfully',
-                'output': result.stdout
-            })
-        else:
-            return jsonify({
-                'error': f'Failed to install plugin: {result.stderr}'
-            }), 500
-            
+        app.logger.info(f"Pip install output for {pip_package_name}: {process.stdout}")
+        return jsonify({'message': f"Plugin '{plugin_name}' installed successfully."})
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error installing plugin {plugin_name}: {e.stderr}", exc_info=True)
+        return jsonify({'error': f"Failed to install plugin '{plugin_name}': {e.stderr}"}), 500
     except Exception as e:
-        return jsonify({'error': f"Error installing plugin: {str(e)}"}), 500
-
-@app.route('/api/plugins/enable', methods=['POST'])
-def enable_plugin():
-    """Enable a plugin in the config."""
-    try:
-        data = request.json
-        plugin_name = data.get('plugin_name')
-        
-        if plugin_name not in AVAILABLE_PLUGINS:
-            return jsonify({'error': 'Unknown plugin'}), 400
-        
-        # Load current config
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
-        
-        # Add plugin to enabled list
-        plugins = config.get('plugins', [])
-        if plugin_name not in plugins:
-            plugins.append(plugin_name)
-            config['plugins'] = plugins
-        
-        # Add default plugin configuration if not exists
-        plugin_info = AVAILABLE_PLUGINS[plugin_name]
-        if plugin_info['config_template'] and plugin_name not in config:
-            config[plugin_name] = plugin_info['config_template']
-        
-        # Save config
-        with open(config_path, 'w') as file:
-            yaml.dump(config, file, default_flow_style=False)
-        
-        return jsonify({'message': f'Plugin {plugin_name} enabled successfully'})
-        
-    except Exception as e:
-        return jsonify({'error': f"Error enabling plugin: {str(e)}"}), 500
-
-@app.route('/api/plugins/disable', methods=['POST'])
-def disable_plugin():
-    """Disable a plugin in the config."""
-    try:
-        data = request.json
-        plugin_name = data.get('plugin_name')
-        
-        # Load current config
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
-        
-        # Remove plugin from enabled list
-        plugins = config.get('plugins', [])
-        if plugin_name in plugins:
-            plugins.remove(plugin_name)
-            config['plugins'] = plugins
-        
-        # Save config
-        with open(config_path, 'w') as file:
-            yaml.dump(config, file, default_flow_style=False)
-        
-        return jsonify({'message': f'Plugin {plugin_name} disabled successfully'})
-        
-    except Exception as e:
-        return jsonify({'error': f"Error disabling plugin: {str(e)}"}), 500
-
-@app.route('/api/plugins/config/<plugin_name>', methods=['GET'])
-def get_plugin_config(plugin_name):
-    """Get configuration for a specific plugin."""
-    try:
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
-        
-        plugin_config = config.get(plugin_name, {})
-        template = AVAILABLE_PLUGINS.get(plugin_name, {}).get('config_template', {})
-        
-        return jsonify({
-            'config': plugin_config,
-            'template': template
-        })
-        
-    except Exception as e:
-        return jsonify({'error': f"Error loading plugin config: {str(e)}"}), 500
+        app.logger.error(f"An unexpected error occurred during plugin installation: {e}", exc_info=True)
+        return jsonify({'error': f"An unexpected error occurred while installing plugin '{plugin_name}': {e}"}), 500
 
 @app.route('/api/plugins/config/<plugin_name>', methods=['POST'])
-def update_plugin_config(plugin_name):
-    """Update configuration for a specific plugin."""
+def save_plugin_config(plugin_name):
+    config_data = request.json.get('config')
+    if not isinstance(config_data, dict):
+        return jsonify({'error': 'Invalid configuration data. Must be a dictionary.'}), 400
+
+    full_config = read_config()
+    
+    # Ensure the plugin's configuration section exists
+    if plugin_name not in full_config:
+        full_config[plugin_name] = {}
+    
+    # Update the plugin's configuration
+    full_config[plugin_name].update(config_data)
+
+    if write_config(full_config):
+        return jsonify({'message': f"Configuration for plugin '{plugin_name}' saved successfully."})
+    return jsonify({'error': 'Failed to save plugin configuration.'}), 500
+
+@app.route('/api/command', methods=['POST'])
+def run_command():
+    data = request.json
+    command = data.get('command')
+    args = data.get('args', [])
+
+    if not command:
+        return jsonify({'error': 'Command is required.'}), 400
+
+    # Basic whitelist for security
+    allowed_commands = ['import', 'list', 'update', 'modify', 'config', 'version', 'stats']
+    if command not in allowed_commands:
+        return jsonify({'error': f"Command '{command}' is not allowed."}), 403
+
+    full_cmd = [BEETS_BIN, command] + args
+    
     try:
-        data = request.json
-        plugin_config = data.get('config', {})
-        
-        # Load current config
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
-        
-        # Update plugin configuration
-        config[plugin_name] = plugin_config
-        
-        # Save config
-        with open(config_path, 'w') as file:
-            yaml.dump(config, file, default_flow_style=False)
-        
-        return jsonify({'message': f'Plugin {plugin_name} configuration updated successfully'})
-        
+        process = subprocess.run(full_cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        return jsonify({'output': process.stdout, 'error': process.stderr})
+    except subprocess.CalledProcessError as e:
+        return jsonify({'output': e.stdout, 'error': e.stderr}), 500
     except Exception as e:
-        return jsonify({'error': f"Error updating plugin config: {str(e)}"}), 500
+        app.logger.error(f"Error running command '{' '.join(full_cmd)}': {e}", exc_info=True)
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
-def is_plugin_installed(plugin_name, pip_name):
-    """Check if a plugin is installed."""
-    try:
-        if pip_name == 'beets':  # Built-in plugins
-            return True
-        
-        # Check if the package is installed
-        result = subprocess.run(
-            ['pip', 'show', pip_name.split('[')[0]], 
-            capture_output=True, text=True
-        )
-        return result.returncode == 0
-        
-    except Exception:
-        return False
 
-# File Browser Routes
 @app.route('/api/browse', methods=['GET'])
-def browse_filesystem():
-    """Browse the filesystem starting from a given path."""
+def browse_files():
+    path = request.args.get('path', '/')
+    
+    if not is_path_safe(path):
+        return jsonify({'error': 'Access denied to this path.'}), 403
+
     try:
-        # Get the path parameter, default to root or home
-        path = request.args.get('path', '/music')
-        
-        # Security check - ensure path is safe
-        if not is_safe_path(path):
-            return jsonify({'error': 'Access denied to this path'}), 403
-        
-        # Normalize the path
-        path = os.path.abspath(path)
-        
-        # Check if path exists
-        if not os.path.exists(path):
-            # Try common music directories if path doesn't exist
-            fallback_paths = ['/music', '/home', '/mnt', '/media', '/']
-            for fallback in fallback_paths:
-                if os.path.exists(fallback) and is_safe_path(fallback):
-                    path = fallback
-                    break
-        
         items = []
+        with os.scandir(path) as entries:
+            for entry in entries:
+                if entry.is_dir():
+                    items.append({
+                        'name': entry.name,
+                        'path': entry.path,
+                        'type': 'directory',
+                        'size': None,
+                        'modified': format_timestamp(entry.stat().st_mtime)
+                    })
+                elif entry.is_file():
+                    items.append({
+                        'name': entry.name,
+                        'path': entry.path,
+                        'type': 'file',
+                        'size': format_size(entry.stat().st_size),
+                        'modified': format_timestamp(entry.stat().st_mtime)
+                    })
         
-        # Add parent directory option (except for root)
-        parent_path = os.path.dirname(path)
-        if path != '/' and parent_path != path:
-            items.append({
-                'name': '..',
-                'path': parent_path,
-                'type': 'directory',
-                'is_parent': True,
-                'size': '',
-                'modified': ''
-            })
-        
-        # List directory contents
-        try:
-            for item_name in sorted(os.listdir(path)):
-                # Skip hidden files/folders by default
-                if item_name.startswith('.') and item_name not in ['..']:
-                    continue
-                
-                item_path = os.path.join(path, item_name)
-                
-                # Skip if we can't access it
-                if not os.access(item_path, os.R_OK):
-                    continue
-                
-                try:
-                    stat_info = os.stat(item_path)
-                    is_dir = stat.S_ISDIR(stat_info.st_mode)
-                    
-                    # Only include directories for directory selection
-                    if is_dir:
-                        items.append({
-                            'name': item_name,
-                            'path': item_path,
-                            'type': 'directory',
-                            'is_parent': False,
-                            'size': '',
-                            'modified': format_timestamp(stat_info.st_mtime)
-                        })
-                        
-                except (OSError, PermissionError):
-                    # Skip items we can't stat
-                    continue
-        
-        except PermissionError:
-            return jsonify({'error': 'Permission denied accessing this directory'}), 403
-        
-        return jsonify({
-            'current_path': path,
-            'items': items,
-            'parent_path': parent_path if path != '/' else None
-        })
-        
+        # Sort directories first, then files, both alphabetically
+        items.sort(key=lambda x: (x['type'] != 'directory', x['name'].lower()))
+
+        parent_path = str(Path(path).parent) if path != '/' else None
+
+        return jsonify({'current_path': path, 'parent_path': parent_path, 'items': items})
+    except FileNotFoundError:
+        return jsonify({'error': 'Path not found.'}), 404
+    except PermissionError:
+        return jsonify({'error': 'Permission denied.'}), 403
     except Exception as e:
-        return jsonify({'error': f"Error browsing filesystem: {str(e)}"}), 500
+        app.logger.error(f"Error Browse path '{path}': {e}", exc_info=True)
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
-@app.route('/api/browse/validate', methods=['POST'])
-def validate_path():
-    """Validate if a path exists and is accessible."""
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
     try:
-        data = request.json
-        path = data.get('path', '')
+        cmd = [BEETS_BIN, 'stats']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        stats_output = process.stdout
         
-        if not path:
-            return jsonify({'valid': False, 'error': 'No path provided'})
-        
-        # Security check
-        if not is_safe_path(path):
-            return jsonify({'valid': False, 'error': 'Access denied to this path'})
-        
-        # Normalize path
-        path = os.path.abspath(path)
-        
-        # Check if exists and is directory
-        if not os.path.exists(path):
-            return jsonify({'valid': False, 'error': 'Path does not exist'})
-        
-        if not os.path.isdir(path):
-            return jsonify({'valid': False, 'error': 'Path is not a directory'})
-        
-        if not os.access(path, os.R_OK):
-            return jsonify({'valid': False, 'error': 'Permission denied'})
-        
-        return jsonify({'valid': True, 'path': path})
-        
+        stats = parse_stats(stats_output)
+        return jsonify(stats)
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error getting beets stats: {e.stderr}", exc_info=True)
+        return jsonify({'error': f"Failed to get stats: {e.stderr}"}), 500
     except Exception as e:
-        return jsonify({'valid': False, 'error': str(e)})
+        app.logger.error(f"An unexpected error occurred while getting stats: {e}", exc_info=True)
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
-@app.route('/api/browse/music-dirs', methods=['GET'])
-def get_common_music_directories():
-    """Get common music directory locations."""
-    common_dirs = []
-    
-    # Common music directory paths
-    potential_dirs = [
-        '/music',
-        '/media',
-        '/mnt',
-        '/home/music',
-        '/usr/share/music',
-        '/opt/music',
-        '/var/music'
-    ]
-    
-    # Add user home directories if accessible
-    try:
-        for user_dir in os.listdir('/home'):
-            user_music = f'/home/{user_dir}/Music'
-            if os.path.exists(user_music) and os.access(user_music, os.R_OK):
-                potential_dirs.append(user_music)
-    except:
-        pass
-    
-    # Check which directories exist and are accessible
-    for dir_path in potential_dirs:
-        if os.path.exists(dir_path) and os.path.isdir(dir_path) and os.access(dir_path, os.R_OK):
-            try:
-                # Count subdirectories to give an idea of content
-                subdir_count = len([d for d in os.listdir(dir_path) 
-                                  if os.path.isdir(os.path.join(dir_path, d))])
-                common_dirs.append({
-                    'path': dir_path,
-                    'name': os.path.basename(dir_path) or dir_path,
-                    'subdirs': subdir_count
-                })
-            except:
-                continue
-    
-    return jsonify({'directories': common_dirs})
+# --- File Browser Helper Functions (from your provided filebrowser.js, adapted for Python) ---
+def format_size(bytes, decimals=2):
+    """Format bytes into human-readable string."""
+    if bytes == 0:
+        return '0 Bytes'
+    k = 1024
+    dm = decimals if decimals >= 0 else 0
+    sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+    i = int(os.path.floor(os.log(bytes) / os.log(k)))
+    return f"{round(bytes / (k ** i), dm)} {sizes[i]}"
 
-def is_safe_path(path):
-    """Check if a path is safe to access (basic security)."""
-    # Normalize the path
-    path = os.path.abspath(path)
+def is_path_safe(path):
+    """
+    Checks if a path is safe to browse.
+    Prevents directory traversal attacks.
+    """
+    normalized_path = Path(path).resolve()
     
-    # List of dangerous paths to avoid
-    dangerous_paths = [
-        '/etc/passwd',
-        '/etc/shadow',
-        '/root/.ssh',
-        '/home/.ssh',
-        '/proc',
-        '/sys/kernel'
-    ]
-    
-    # Check against dangerous paths
-    for dangerous in dangerous_paths:
-        if path.startswith(dangerous):
+    # Disallow paths that try to escape into sensitive areas outside allowed roots
+    # Example: Disallow if it contains '..' at root or points to /etc, /dev etc.
+    dangerous_starts = ['/etc', '/dev', '/proc', '/sys', '/run']
+    for dangerous in dangerous_starts:
+        if normalized_path.as_posix().startswith(dangerous):
             return False
     
     # Only allow certain root directories
-    allowed_roots = ['/', '/home', '/music', '/media', '/mnt', '/opt', '/usr', '/var']
+    # Ensure these are paths *inside the container* that you intend to be browsable
+    # Add any other root paths that are explicitly mounted or part of the container's browsable filesystem
+    allowed_roots = ['/', '/music', '/config'] 
     
-    # Check if path starts with allowed root
+    # Check if path starts with an allowed root
     for root in allowed_roots:
-        if path.startswith(root):
+        if normalized_path.as_posix().startswith(root):
             return True
     
     return False
@@ -657,8 +492,8 @@ def parse_stats(output):
             stats['total_size'] = line.split(': ')[1].split(' ')[0]  
     return stats
 
-# Read port from environment variable, defaulting to 3000 if not set
-port = int(os.getenv("FLASK_PORT", 3000))
+# Read port from environment variable, defaulting to 5000 if not set
+port = int(os.getenv('FLASK_PORT', 5000))
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=os.getenv('FLASK_ENV') == 'development')

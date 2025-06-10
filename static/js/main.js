@@ -1,15 +1,11 @@
-window.onload = function() {
-    getStats();              
-    viewConfig();            
-    
-    setupCommandDropdown();  
-};
+// static/js/main.js
 
+// Define functions before they are called in window.onload
 function getStats() {
     fetch('/api/stats')
         .then(response => response.json())
         .then(data => {
-            
+            // Update the stats in the command tab as well as library tab
             document.getElementById('totalTracks').textContent = data.total_tracks !== undefined ? `(${data.total_tracks})` : '';
             document.getElementById('totalArtists').textContent = data.total_artists !== undefined ? `(${data.total_artists})` : '';
             document.getElementById('totalAlbums').textContent = data.total_albums !== undefined ? `(${data.total_albums})` : '';
@@ -18,6 +14,50 @@ function getStats() {
             console.error('Error loading stats:', error);
         });
 }
+
+function viewConfig() {
+    fetch('/api/config')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('configEditor').value = data.config;
+        })
+        .catch(error => {
+            console.error('Error loading config:', error);
+            document.getElementById('configMessage').innerHTML = '<div class="alert alert-danger">Error loading config: ' + error.message + '</div>';
+        });
+}
+
+function saveConfig() {
+    const configContent = document.getElementById('configEditor').value;
+    const configMessageDiv = document.getElementById('configMessage');
+
+    configMessageDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving configuration...';
+    configMessageDiv.className = 'mt-3 text-info';
+
+    fetch('/api/config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ config: configContent })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            configMessageDiv.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+            configMessageDiv.className = 'mt-3 text-danger';
+        } else {
+            configMessageDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+            configMessageDiv.className = 'mt-3 text-success';
+        }
+    })
+    .catch(error => {
+        console.error('Error saving config:', error);
+        configMessageDiv.innerHTML = '<div class="alert alert-danger">Error saving config: ' + error.message + '</div>';
+        configMessageDiv.className = 'mt-3 text-danger';
+    });
+}
+
 
 function setupCommandDropdown() {
     const commandDropdown = document.getElementById('command');
@@ -35,195 +75,224 @@ function setupCommandDropdown() {
 function updateCommandOptions() {
     const command = document.getElementById('command').value;
     const optionsDiv = document.getElementById('command-options');
-    optionsDiv.innerHTML = '';
-    let commandPreview = `beet ${command}`;
+    optionsDiv.innerHTML = ''; // Clear previous options
 
-    switch (command) {
+    switch(command) {
         case 'import':
             optionsDiv.innerHTML = `
-                <h3>Import Options</h3>
-                <label><input type="checkbox" value="-A" onchange="updatePreview()"> Don't autotag; just import</label><br>
-                <label><input type="checkbox" value="-W" onchange="updatePreview()"> Don't write new tags to files</label><br>
-                <label><input type="checkbox" value="-C" onchange="updatePreview()"> Don't copy imported files; leave them where they are</label><br>
-                <label><input type="checkbox" value="-m" onchange="updatePreview()"> Move imported files to your music directory</label><br>
-                <div class="d-flex align-items-center mb-2">
-                    <input type="text" id="importPath" class="form-control me-2" placeholder="Enter path to music folder or track" oninput="updatePreview()">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="browseForImportPath()">
-                        <i class="fas fa-folder-open"></i> Browse
-                    </button>
+                <div class="mb-3">
+                    <label for="importPath" class="form-label text-light">Path to import:</label>
+                    <input type="text" class="form-control bg-secondary text-light border-secondary" id="importPath" placeholder="/music">
                 </div>
-                <label><input type="text" id="importLog" placeholder="Logfile path for skipped albums (optional)" oninput="updatePreview()"></label><br>
-                <label><input type="text" id="additionalImportArgs" placeholder="Additional arguments (e.g., specific track names)" oninput="updatePreview()"></label><br>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="copyCheckbox" checked>
+                    <label class="form-check-label text-light" for="copyCheckbox">Copy files (default)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="autotagCheckbox">
+                    <label class="form-check-label text-light" for="autotagCheckbox">Autotag (recommended)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="linkCheckbox">
+                    <label class="form-check-label text-light" for="linkCheckbox">Link files (don't copy)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="moveCheckbox">
+                    <label class="form-check-label text-light" for="moveCheckbox">Move files (don't copy)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="incrementalCheckbox">
+                    <label class="form-check-label text-light" for="incrementalCheckbox">Incremental import</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="skipCheckbox">
+                    <label class="form-check-label text-light" for="skipCheckbox">Skip existing files</label>
+                </div>
             `;
-            break;
-        case 'update':
-            optionsDiv.innerHTML = `
-                <h3>Update Options</h3>
-                <label><input type="text" id="fields" placeholder="Fields to update (-F)" oninput="updatePreview()"></label><br>
-                <label><input type="text" id="excludeFields" placeholder="Exclude fields (-e)" oninput="updatePreview()"></label><br>
-                <label><input type="checkbox" value="-a" onchange="updatePreview()"> Operate on albums</label><br>
-                <label><input type="checkbox" value="-M" onchange="updatePreview()"> Disable renaming files</label><br>
-                <label><input type="checkbox" value="-p" onchange="updatePreview()"> Dry run (pretend)</label><br>
-                <label><input type="text" id="updateQuery" placeholder="Enter query" oninput="updatePreview()"></label><br>
-            `;
-            break;
-        case 'list':
-            optionsDiv.innerHTML = `
-                <h3>List Options</h3>
-                <label><input type="checkbox" value="-a" onchange="updatePreview()"> Search for albums</label><br>
-                <label><input type="checkbox" value="-p" onchange="updatePreview()"> Print filenames of matched items</label><br>
-                <label><input type="text" id="listFormat" placeholder="Format (-f)" oninput="updatePreview()"></label><br>
-                <label><input type="text" id="listQuery" placeholder="Enter query like artist:name" oninput="updatePreview()"></label><br>
-            `;
+            // Add browse button for import path
+            addBrowseButton('importPath');
             break;
         case 'modify':
+        case 'update':
+        case 'list':
             optionsDiv.innerHTML = `
-                <h3>Modify Options</h3>
-                <label><input type="text" id="modifyFields" placeholder="FIELD=VALUE pairs" oninput="updatePreview()"></label><br>
-                <label><input type="checkbox" value="-I" onchange="updatePreview()"> Prevent cascading changes to tracks</label><br>
-                <label><input type="checkbox" value="-M" onchange="updatePreview()"> Prevent moving items</label><br>
-                <label><input type="checkbox" value="-W" onchange="updatePreview()"> Don't write tags to files</label><br>
-                <label><input type="checkbox" value="-a" onchange="updatePreview()"> Modify album fields</label><br>
-                <label><input type="checkbox" value="-y" onchange="updatePreview()"> Automatically confirm changes</label><br>
-                <label><input type="text" id="modifyQuery" placeholder="Enter query" oninput="updatePreview()"></label><br>
+                <div class="mb-3">
+                    <label for="query" class="form-label text-light">Query (e.g., artist: "The Beatles" album: "Abbey Road"):</label>
+                    <input type="text" class="form-control bg-secondary text-light border-secondary" id="query">
+                </div>
             `;
+            if (command === 'modify') {
+                optionsDiv.innerHTML += `
+                    <div class="mb-3">
+                        <label for="field" class="form-label text-light">Field to modify (e.g., genre):</label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary" id="field">
+                    </div>
+                    <div class="mb-3">
+                        <label for="value" class="form-label text-light">New Value (e.g., "Rock"):</label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary" id="value">
+                    </div>
+                `;
+            }
             break;
         case 'config':
             optionsDiv.innerHTML = `
-                <h3>Config Options</h3>
-                <label><input type="checkbox" value="-d" onchange="updatePreview()"> Include default options</label><br>
-                <label><input type="checkbox" value="-p" onchange="updatePreview()"> Show path to configuration file</label><br>
-                <label><input type="checkbox" value="-c" onchange="updatePreview()"> Include sensitive data</label><br>
-                <label><input type="checkbox" value="-e" onchange="updatePreview()"> Edit configuration file</label><br>
+                <div class="mb-3">
+                    <label for="configArgs" class="form-label text-light">Config Arguments (e.g., -p plugins, -e editor):</label>
+                    <input type="text" class="form-control bg-secondary text-light border-secondary" id="configArgs">
+                </div>
             `;
-            viewConfig(); 
             break;
         default:
-            optionsDiv.innerHTML = '<p>Select a command to see options.</p>';
+            optionsDiv.innerHTML = '';
+            break;
+    }
+}
+
+function executeCommand() {
+    const command = document.getElementById('command').value;
+    let args = document.getElementById('args').value;
+    let fullArgs = [];
+
+    // Add command-specific arguments
+    switch(command) {
+        case 'import':
+            const importPath = document.getElementById('importPath').value;
+            if (importPath) {
+                fullArgs.push(`"${importPath}"`); // Quote path to handle spaces
+            }
+            if (document.getElementById('copyCheckbox').checked) {
+                // 'copy' is default, so no flag needed unless 'link' or 'move' is active
+            } else if (document.getElementById('linkCheckbox').checked) {
+                fullArgs.push('-l'); // Link
+            } else if (document.getElementById('moveCheckbox').checked) {
+                fullArgs.push('-m'); // Move
+            }
+
+            if (document.getElementById('autotagCheckbox').checked) {
+                fullArgs.push('-t'); // Autotag
+            }
+            if (document.getElementById('incrementalCheckbox').checked) {
+                fullArgs.push('-i'); // Incremental
+            }
+            if (document.getElementById('skipCheckbox').checked) {
+                fullArgs.push('-s'); // Skip existing
+            }
+            // Add -A (don't autotag) if autotag is unchecked
+            if (!document.getElementById('autotagCheckbox').checked) {
+                fullArgs.push('-A');
+            }
+            break;
+        case 'modify':
+            const queryModify = document.getElementById('query').value;
+            const field = document.getElementById('field').value;
+            const value = document.getElementById('value').value;
+            if (queryModify) fullArgs.push(queryModify);
+            if (field && value) fullArgs.push(`${field}=${value}`);
+            break;
+        case 'update':
+        case 'list':
+            const queryBasic = document.getElementById('query').value;
+            if (queryBasic) fullArgs.push(queryBasic);
+            break;
+        case 'config':
+            const configArgs = document.getElementById('configArgs').value;
+            if (configArgs) fullArgs.push(configArgs);
+            break;
     }
 
-    document.getElementById('commandPreview').textContent = commandPreview;
-}
+    // Append any manually entered additional arguments
+    if (args) {
+        fullArgs.push(args);
+    }
 
-function updatePreview() {
-    const command = document.getElementById('command').value;
-    let commandPreview = `beet ${command}`;
-    const options = Array.from(document.querySelectorAll('#command-options input[type="checkbox"]:checked')).map(el => el.value);
-    const fields = document.getElementById('fields')?.value || '';
-    const excludeFields = document.getElementById('excludeFields')?.value || '';
-    const importPath = document.getElementById('importPath')?.value || '';
-    const importLog = document.getElementById('importLog')?.value || '';
-    const additionalImportArgs = document.getElementById('additionalImportArgs')?.value || '';
-    const updateQuery = document.getElementById('updateQuery')?.value || '';
-    const listFormat = document.getElementById('listFormat')?.value || '';
-    const listQuery = document.getElementById('listQuery')?.value || '';
-    const modifyFields = document.getElementById('modifyFields')?.value || '';
-    const modifyQuery = document.getElementById('modifyQuery')?.value || '';
+    const commandResultDiv = document.getElementById('commandResult');
+    commandResultDiv.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Executing ${command}...`;
+    commandResultDiv.className = 'mt-2 text-info'; // Keep it blue during loading
 
-    if (fields) commandPreview += ` -F ${fields}`;
-    if (excludeFields) commandPreview += ` -e ${excludeFields}`;
-    if (importPath) commandPreview += ` ${importPath}`;
-    if (importLog) commandPreview += ` -l ${importLog}`;
-    if (additionalImportArgs) commandPreview += ` ${additionalImportArgs}`;
-    if (updateQuery) commandPreview += ` ${updateQuery}`;
-    if (listFormat) commandPreview += ` -f ${listFormat}`;
-    if (listQuery) commandPreview += ` ${listQuery}`;
-    if (modifyFields) commandPreview += ` ${modifyFields}`;
-    if (modifyQuery) commandPreview += ` ${modifyQuery}`;
-    if (options.length > 0) commandPreview += ` ${options.join(' ')}`;
-
-    document.getElementById('commandPreview').textContent = commandPreview;
-}
-
-function runCommand() {
-    const command = document.getElementById('command').value;
-    const options = Array.from(document.querySelectorAll('#command-options input[type="checkbox"]:checked')).map(el => el.value);
-    const fields = document.getElementById('fields')?.value || '';
-    const excludeFields = document.getElementById('excludeFields')?.value || '';
-    const importPath = document.getElementById('importPath')?.value || '';
-    const importLog = document.getElementById('importLog')?.value || '';
-    const additionalImportArgs = document.getElementById('additionalImportArgs')?.value || '';
-    const updateQuery = document.getElementById('updateQuery')?.value || '';
-    const listFormat = document.getElementById('listFormat')?.value || '';
-    const listQuery = document.getElementById('listQuery')?.value || '';
-    const modifyFields = document.getElementById('modifyFields')?.value || '';
-    const modifyQuery = document.getElementById('modifyQuery')?.value || '';
-
-    let args = [];
-    if (fields) options.push(`-F ${fields}`);
-    if (excludeFields) options.push(`-e ${excludeFields}`);
-    if (importPath) args.push(importPath);
-    if (importLog) options.push(`-l ${importLog}`);
-    if (additionalImportArgs) args.push(additionalImportArgs);
-    if (updateQuery) args.push(updateQuery);
-    if (listFormat) options.push(`-f ${listFormat}`);
-    if (listQuery) args.push(listQuery);
-    if (modifyFields) args.push(modifyFields);
-    if (modifyQuery) args.push(modifyQuery);
-
-    fetch('/api/run-command', {
+    fetch('/api/execute', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, options, arguments: args })
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command: command, args: fullArgs.join(' ') })
     })
     .then(response => response.json())
     .then(data => {
-        if (command === 'list') {
-            window.location.href = '/library.html';
+        if (data.error) {
+            commandResultDiv.innerHTML = `<i class="fas fa-times-circle"></i> Error: <pre>${data.error}</pre>`;
+            commandResultDiv.className = 'mt-2 text-danger';
         } else {
-            document.getElementById('commandResult').textContent = formatCommandOutput(data.output || JSON.stringify(data, null, 2));
+            // Display message, and error output if present
+            let displayMessage = `<i class="fas fa-check-circle"></i> ${data.message}`;
+            if (data.error) { // Backend might return error field even on 200 status if it's a warning
+                displayMessage += `<br><span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Warnings/Errors from Beets:</span> <pre>${data.error}</pre>`;
+            }
+            commandResultDiv.innerHTML = displayMessage;
+            commandResultDiv.className = 'mt-2 text-success';
         }
-
-        if (command === 'config') {
-            viewConfig();
+        // Re-fetch library data if a command that might change it was run
+        if (['import', 'modify', 'remove', 'update'].includes(command)) {
+            fetchLibrary();
         }
-    });
-}
-
-function formatCommandOutput(output) {
-    if (typeof output === 'string') {
-        return output.split('\n').map(line => line.trim()).join('\n');
-    }
-    return output;
-}
-
-function viewConfig() {
-    fetch('/api/config')
-        .then(response => response.text())  
-        .then(data => {
-            document.getElementById('configTextArea').value = data;  
-        })
-        .catch(error => {
-            document.getElementById('configResult').textContent = 'Error loading config: ' + error.message;
-        });
-}
-
-function editConfig() {
-    const yamlText = document.getElementById('configTextArea').value;  
-
-    fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },  
-        body: yamlText  
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('configResult').textContent = data.message || 'Config saved successfully.';
     })
     .catch(error => {
-        document.getElementById('configResult').textContent = 'Error saving config: ' + error.message;
+        commandResultDiv.innerHTML = `<i class="fas fa-times-circle"></i> Network Error: ${error.message}`;
+        commandResultDiv.className = 'mt-2 text-danger';
+        console.error('Error executing command:', error);
     });
 }
 
-// File browser integration
-function browseForImportPath() {
-    if (typeof openFileBrowser === 'function') {
-        const currentPath = document.getElementById('importPath').value || '/music';
-        openFileBrowser((selectedPath) => {
-            document.getElementById('importPath').value = selectedPath;
-            updatePreview();
-        }, currentPath);
-    } else {
-        alert('File browser not available. Please ensure filebrowser.js is loaded.');
-    }
+// Function to update the preview of import path - if you have such functionality
+function updatePreview() {
+    console.log("Import path changed to: " + document.getElementById('importPath').value);
 }
+
+// Function to add browse button dynamically - ensuring it's not duplicated
+function addBrowseButton(inputId, buttonText = 'Browse') {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    
+    const existingButton = input.parentNode.querySelector('.btn-outline-secondary');
+    if (existingButton && existingButton.textContent.includes(buttonText)) {
+        return; 
+    }
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-outline-secondary btn-sm ms-2';
+    button.innerHTML = `<i class="fas fa-folder-open"></i> ${buttonText}`;
+    button.onclick = () => {
+        // Ensure openFileBrowser is defined (from filebrowser.js)
+        if (typeof openFileBrowser === 'function') {
+            openFileBrowser((selectedPath) => {
+                input.value = selectedPath;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }, input.value || '/music');
+        } else {
+            alert('File browser not available. Ensure filebrowser.js is loaded.');
+        }
+    };
+    
+    input.parentNode.insertBefore(button, input.nextSibling);
+}
+
+
+// This should be at the very top of the script or wrapped in DOMContentLoaded if functions are not global
+window.onload = function() {
+    getStats();              
+    viewConfig();            
+    
+    setupCommandDropdown();  
+};
+
+// This ensures browse button is added after DOM content is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // Add browse button to import path input if it exists
+    // A slight delay to ensure filebrowser.js has registered openFileBrowser
+    setTimeout(() => {
+        const importPath = document.getElementById('importPath');
+        if (importPath) {
+            addBrowseButton('importPath');
+        }
+    }, 100); 
+});

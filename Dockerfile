@@ -2,17 +2,26 @@ FROM python:3.11-slim
 
 # Install system dependencies for beets and audio processing
 RUN apt-get update && apt-get install -y \
+    # Build tools and compilers
+    build-essential \
+    gcc \
+    g++ \
+    pkg-config \
     # Required for beets
     python3-dev \
     # Audio libraries for various formats
     ffmpeg \
-    # For ReplayGain calculation
+    # For ReplayGain calculation (optional)
     mp3gain \
     vorbisgain \
     # For fetching album art and lyrics
     curl \
+    wget \
     # General utilities
     git \
+    # Image processing for album art
+    libjpeg-dev \
+    libpng-dev \
     # Clean up
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,11 +35,23 @@ RUN useradd -m -u 1000 beetiful && \
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install beets with additional plugins
-RUN pip install --no-cache-dir beets[fetchart,lyrics,lastgenre,web,replaygain,acousticbrainz,discogs,spotify]
+# Install Beets with the latest stable version and core plugins as extras
+# Beets 1.6.1 is the latest stable release and includes the 'plugin' command.
+RUN pip install --no-cache-dir 'beets==1.6.1' \
+    'beets[fetchart]' \
+    'beets[lyrics]' \
+    'beets[lastgenre]' \
+    'beets[discogs]' \
+    requests pillow mutagen
+
+# Install python-discogs-client and beautifulsoup4 separately, allowing failure
+# These might not always have compatible wheels for all architectures/Python versions
+# or might not be strictly necessary if beets[discogs] handles its own dependency.
+RUN pip install --no-cache-dir python-discogs-client || true
+RUN pip install --no-cache-dir beautifulsoup4 || true
 
 # Copy application code
 COPY . .

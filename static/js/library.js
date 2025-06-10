@@ -1,430 +1,400 @@
 document.addEventListener('DOMContentLoaded', () => {
     fetchLibrary();
-    debugLibrary();
+    // Removed debugLibrary() as it is not defined and causes a ReferenceError.
 });
 
 let currentPage = 1;
 const itemsPerPage = 20;
 let libraryData = [];
 let filteredData = [];
-let sortOrder = { column: null, direction: 'asc' };
+let sortOrder = { column: null, direction: 'asc' }; // Stores current sort column and direction
 
+/**
+ * Fetches the music library data from the backend API.
+ * Updates global libraryData and filteredData, then displays the first page.
+ */
 function fetchLibrary() {
     fetch('/api/library')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                // Check for HTTP errors
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (Array.isArray(data.items)) {
-                libraryData = data.items; 
-                filteredData = libraryData; 
-                showPage(currentPage);    
+                libraryData = data.items;
+                applyFilters(); // Apply filters immediately after fetching
             } else {
-                console.error('Unexpected data format:', data);
-                document.getElementById('libraryResults').innerHTML = '<tr><td colspan="8">No library data found.</td></tr>';
+                console.error('Unexpected data format for library:', data);
+                document.getElementById('libraryResults').innerHTML = '<tr><td colspan="10">No library data found or unexpected format.</td></tr>';
             }
         })
         .catch(error => {
             console.error('Error fetching library data:', error);
-            document.getElementById('libraryResults').innerHTML = '<tr><td colspan="8">Error loading library data.</td></tr>';
+            // Updated error message for better user guidance
+            document.getElementById('libraryResults').innerHTML = `<tr><td colspan="10">Error loading library data: ${error.message}. Please ensure the backend is running and Beets library is accessible.</td></tr>`;
         });
 }
 
-function showPage(page) {
-    const start = (page - 1) * itemsPerPage;
-    const end = start + itemsPerPage;
-    const itemsToDisplay = filteredData.slice(start, end);
+/**
+ * Renders the current page of filtered and sorted library data to the table.
+ */
+function displayLibrary() {
+    const libraryResults = document.getElementById('libraryResults');
+    libraryResults.innerHTML = ''; // Clear previous results
 
-    populateLibrary(itemsToDisplay);
-    updatePaginationControls();
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const itemsToDisplay = filteredData.slice(startIndex, endIndex);
+
+    if (itemsToDisplay.length === 0) {
+        libraryResults.innerHTML = '<tr><td colspan="10">No tracks found matching your criteria.</td></tr>';
+        updatePagination(0);
+        return;
+    }
+
+    itemsToDisplay.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${item.title || 'N/A'}</td>
+            <td>${item.artist || 'N/A'}</td>
+            <td>${item.album || 'N/A'}</td>
+            <td>${item.genre || 'N/A'}</td>
+            <td>${item.year || 'N/A'}</td>
+            <td>${item.length ? formatLength(item.length) : 'N/A'}</td>
+            <td>${item.bitrate ? formatBitrate(item.bitrate) : 'N/A'}</td>
+            <td>${item.path || 'N/A'}</td>
+            <td class="text-nowrap">
+                <button class="btn btn-sm btn-info me-1" onclick="openEditModal(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn btn-sm btn-light me-1" onclick="openLyricsModal(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                    <i class="fas fa-file-alt"></i> Lyrics
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="confirmAction('remove', '${item.title}', '${item.artist}', '${item.album}')">
+                    <i class="fas fa-trash"></i> Remove
+                </button>
+            </td>
+        `;
+        libraryResults.appendChild(row);
+    });
+
+    updatePagination(filteredData.length);
 }
 
+/**
+ * Applies filters based on user input and updates the displayed library.
+ */
 function applyFilters() {
-    const filterTitle = document.getElementById('filterTitle').value.toLowerCase();
-    const filterArtist = document.getElementById('filterArtist').value.toLowerCase();
-    const filterAlbum = document.getElementById('filterAlbum').value.toLowerCase();
-    const filterGenre = document.getElementById('filterGenre').value.toLowerCase();
-    const filterYear = document.getElementById('filterYear')?.value.toLowerCase() || '';
-    const filterBPM = document.getElementById('filterBPM')?.value.toLowerCase() || '';
-    const filterComposer = document.getElementById('filterComposer')?.value.toLowerCase() || '';
+    // Safely get element values, handling cases where elements might not exist yet
+    const filterInput = document.getElementById('filterInput');
+    const searchTerm = filterInput ? filterInput.value.toLowerCase() : '';
 
-    filteredData = libraryData.filter(item => {
-        return (
-            (!filterTitle || item.title.toLowerCase().includes(filterTitle)) &&
-            (!filterArtist || item.artist.toLowerCase().includes(filterArtist)) &&
-            (!filterAlbum || item.album.toLowerCase().includes(filterAlbum)) &&
-            (!filterGenre || item.genre.toLowerCase().includes(filterGenre)) &&
-            (!filterYear || item.year.toLowerCase().includes(filterYear)) &&
-            (!filterBPM || item.bpm.toLowerCase().includes(filterBPM)) &&
-            (!filterComposer || item.composer.toLowerCase().includes(filterComposer))
+    const genreFilterElement = document.getElementById('genreFilter');
+    const genreFilter = genreFilterElement ? genreFilterElement.value.toLowerCase() : '';
+
+    // Initialize filteredData with a copy of libraryData to prevent direct modification
+    filteredData = [...libraryData]; 
+
+    if (searchTerm) {
+        filteredData = filteredData.filter(item =>
+            (item.title && item.title.toLowerCase().includes(searchTerm)) ||
+            (item.artist && item.artist.toLowerCase().includes(searchTerm)) ||
+            (item.album && item.album.toLowerCase().includes(searchTerm)) ||
+            (item.genre && item.genre.toLowerCase().includes(searchTerm))
         );
-    });
+    }
 
-    // Clear sorting when filtering
-    document.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
-    sortOrder = { column: null, direction: 'asc' };
+    if (genreFilter) {
+        filteredData = filteredData.filter(item =>
+            item.genre && item.genre.toLowerCase().includes(genreFilter)
+        );
+    }
 
-    currentPage = 1; 
-    showPage(currentPage);
+    populateGenreFilter(); // Re-populate to show only genres in current filtered view
+
+    sortData(); // Apply sorting after filtering
+    currentPage = 1; // Reset to first page after filtering
+    displayLibrary();
 }
 
-function clearFilters() {
-    // Clear all filter inputs
-    document.getElementById('filterTitle').value = '';
-    document.getElementById('filterArtist').value = '';
-    document.getElementById('filterAlbum').value = '';
-    document.getElementById('filterGenre').value = '';
-    
-    // Clear additional filters if they exist
-    const filterYear = document.getElementById('filterYear');
-    const filterBPM = document.getElementById('filterBPM');
-    const filterComposer = document.getElementById('filterComposer');
-    
-    if (filterYear) filterYear.value = '';
-    if (filterBPM) filterBPM.value = '';
-    if (filterComposer) filterComposer.value = '';
+/**
+ * Sorts the filtered data based on the current sort order.
+ */
+function sortData() {
+    if (!sortOrder.column) {
+        return; // No column to sort by
+    }
 
-    // Reset filtered data
-    filteredData = libraryData;
-    currentPage = 1;
+    const column = sortOrder.column;
+    const direction = sortOrder.direction === 'asc' ? 1 : -1;
 
-    // Clear sorting
-    document.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
-    sortOrder = { column: null, direction: 'asc' };
+    filteredData.sort((a, b) => {
+        const valA = a[column] || ''; // Handle null/undefined values
+        const valB = b[column] || ''; // Handle null/undefined values
 
-    showPage(currentPage);
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            return valA.localeCompare(valB) * direction;
+        }
+        // Numeric comparison for numbers, fallback to string for others
+        if (typeof valA === 'number' && typeof valB === 'number') {
+            return (valA - valB) * direction;
+        }
+        return String(valA).localeCompare(String(valB)) * direction;
+    });
+
+    displayLibrary(); // Re-display sorted data
 }
 
-// Add event listeners for all filter inputs
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.filter-input').forEach(input => {
-        input.addEventListener('input', () => {
-            applyFilters();
-        });
-    });
-});
-
-function sortByColumn(column) {
-    // Clear previous sort indicators
-    document.querySelectorAll('#tableHeaders th').forEach(th => {
-        th.classList.remove('asc', 'desc');
-        th.querySelector('.sort-arrow')?.remove(); 
-    });
-
-    // Toggle sort direction
+/**
+ * Handles sorting when a column header is clicked.
+ * @param {string} column The data key to sort by (e.g., 'title', 'artist').
+ */
+function handleSort(column) {
     if (sortOrder.column === column) {
         sortOrder.direction = sortOrder.direction === 'asc' ? 'desc' : 'asc';
     } else {
         sortOrder.column = column;
         sortOrder.direction = 'asc';
     }
-
-    // Sort the data
-    filteredData.sort((a, b) => {
-        const aValue = Object.values(a)[column]?.toLowerCase() || '';
-        const bValue = Object.values(b)[column]?.toLowerCase() || '';
-
-        if (aValue < bValue) return sortOrder.direction === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortOrder.direction === 'asc' ? 1 : -1;
-        return 0;
-    });
-
-    // Update visual indicator
-    const header = document.querySelector(`#tableHeaders th[data-column="${column}"]`);
-    if (header) {
-        header.classList.add(sortOrder.direction); 
-        const arrow = document.createElement('span');
-        arrow.className = 'sort-arrow';
-        arrow.innerHTML = sortOrder.direction === 'asc' ? '▲' : '▼';
-        header.appendChild(arrow);
-    }
-
-    showPage(currentPage); 
+    updateSortIndicators();
+    sortData();
 }
 
-function updatePaginationControls() {
+/**
+ * Updates the sort indicators (arrows) in the table headers.
+ */
+function updateSortIndicators() {
+    document.querySelectorAll('.sortable').forEach(header => {
+        const column = header.getAttribute('data-sort');
+        const icon = header.querySelector('i');
+        if (icon) {
+            icon.remove(); // Remove existing icon
+        }
+
+        if (sortOrder.column === column) {
+            const newIcon = document.createElement('i');
+            newIcon.classList.add('fas', sortOrder.direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down', 'ms-2');
+            header.appendChild(newIcon);
+        }
+    });
+}
+
+/**
+ * Populates the genre filter dropdown with unique genres from the library data.
+ */
+function populateGenreFilter() {
+    const genreFilter = document.getElementById('genreFilter');
+    // Clear existing options, but keep "All Genres"
+    genreFilter.innerHTML = '<option value="">All Genres</option>'; 
+
+    const genres = new Set();
+    filteredData.forEach(item => { // Use filteredData to show relevant genres
+        if (item.genre) {
+            // Split genres by common delimiters like '/' or ',' or ';'
+            item.genre.split(/[,/;]/).forEach(g => {
+                const trimmedGenre = g.trim();
+                if (trimmedGenre) {
+                    genres.add(trimmedGenre);
+                }
+            });
+        }
+    });
+
+    Array.from(genres).sort().forEach(genre => {
+        const option = document.createElement('option');
+        option.value = genre.toLowerCase();
+        option.textContent = genre;
+        genreFilter.appendChild(option);
+    });
+}
+
+/**
+ * Updates the pagination controls based on the total number of items.
+ * @param {number} totalItems The total number of items after filtering.
+ */
+function updatePagination(totalItems) {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+    document.getElementById('prevPage').disabled = currentPage === 1;
+    document.getElementById('nextPage').disabled = currentPage === totalPages || totalPages === 0;
+
+    // Attach event listeners to pagination buttons
+    document.getElementById('prevPage').onclick = prevPage;
+    document.getElementById('nextPage').onclick = nextPage;
+}
+
+/**
+ * Navigates to the previous page.
+ */
+function prevPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        displayLibrary();
+    }
+}
+
+/**
+ * Navigates to the next page.
+ */
+function nextPage() {
     const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-    const paginationControls = document.getElementById('paginationControls');
-    paginationControls.innerHTML = '';
-
-    const firstButton = document.createElement('button');
-    firstButton.innerText = 'First';
-    firstButton.disabled = currentPage === 1;
-    firstButton.onclick = () => {
-        currentPage = 1;
-        showPage(currentPage);
-    };
-    paginationControls.appendChild(firstButton);
-
-    const prevButton = document.createElement('button');
-    prevButton.innerText = 'Previous';
-    prevButton.disabled = currentPage === 1;
-    prevButton.onclick = () => {
-        if (currentPage > 1) {
-            currentPage--;
-            showPage(currentPage);
-        }
-    };
-    paginationControls.appendChild(prevButton);
-
-    // Show page numbers
-    const maxButtons = 5;
-    const startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-    const endPage = Math.min(totalPages, startPage + maxButtons - 1);
-
-    for (let i = startPage; i <= endPage; i++) {
-        const pageButton = document.createElement('button');
-        pageButton.innerText = i;
-        pageButton.disabled = i === currentPage;
-        pageButton.classList.toggle('active-page', i === currentPage); 
-        pageButton.onclick = () => {
-            currentPage = i;
-            showPage(currentPage);
-        };
-        paginationControls.appendChild(pageButton);
-    }
-
-    const nextButton = document.createElement('button');
-    nextButton.innerText = 'Next';
-    nextButton.disabled = currentPage === totalPages;
-    nextButton.onclick = () => {
-        if (currentPage < totalPages) {
-            currentPage++;
-            showPage(currentPage);
-        }
-    };
-    paginationControls.appendChild(nextButton);
-
-    const lastButton = document.createElement('button');
-    lastButton.innerText = 'Last';
-    lastButton.disabled = currentPage === totalPages;
-    lastButton.onclick = () => {
-        currentPage = totalPages;
-        showPage(currentPage);
-    };
-    paginationControls.appendChild(lastButton);
-
-    const pageInfo = document.createElement('span');
-    pageInfo.innerText = ` Page ${currentPage} of ${totalPages} `;
-    paginationControls.appendChild(pageInfo);
-}
-
-// Add click event listener for table headers
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('tableHeaders').addEventListener('click', (event) => {
-        const column = event.target.dataset.column;
-        if (column !== undefined) {
-            sortByColumn(parseInt(column));
-        }
-    });
-});
-
-function populateLibrary(items) {
-    const libraryResults = document.getElementById('libraryResults');
-    libraryResults.innerHTML = '';  
-
-    items.forEach((item, index) => {
-        const row = document.createElement('tr');
-        row.id = `track-row-${index}`;
-        row.innerHTML = `
-            <td title="${item.title || ''}">${item.title || ''}</td>
-            <td title="${item.artist || ''}">${item.artist || ''}</td>
-            <td title="${item.album || ''}">${item.album || ''}</td>
-            <td title="${item.genre || ''}">${item.genre || ''}</td>
-            <td title="${item.year || ''}">${item.year || ''}</td>
-            <td title="${item.bpm || ''}">${item.bpm || ''}</td>
-            <td title="${item.composer || ''}">${item.composer || ''}</td>
-            <td>
-                <button class="btn btn-primary btn-sm" onclick="testEdit(${index})">
-                    Edit
-                </button>
-            </td>
-        `;
-        libraryResults.appendChild(row);
-    });
-    
-    // Store items globally so we can access them
-    window.currentLibraryItems = items;
-}
-
-// Simple test function
-function testEdit(index) {
-    console.log('testEdit called with index:', index);
-    
-    if (window.currentLibraryItems && window.currentLibraryItems[index]) {
-        const track = window.currentLibraryItems[index];
-        console.log('Track data:', track);
-        editTrack(track, index);
-    } else {
-        console.error('No track found at index:', index);
-        alert('No track data found');
+    if (currentPage < totalPages) {
+        currentPage++;
+        displayLibrary();
     }
 }
 
-function editTrack(track, rowIndex) {
-    console.log('=== editTrack called ===');
-    console.log('Track:', track);
-    console.log('Row Index:', rowIndex);
-    
-    // Close any existing edit forms first
-    closeEditForm();
-    
-    // Find the target row by ID
-    const targetRow = document.getElementById(`track-row-${rowIndex}`);
-    console.log('Looking for row ID:', `track-row-${rowIndex}`);
-    console.log('Found target row:', targetRow);
-    
-    if (!targetRow) {
-        console.error('Could not find target row:', `track-row-${rowIndex}`);
-        alert('Could not find target row');
-        return;
+/**
+ * Formats a length in seconds into a human-readable string (MM:SS).
+ * @param {number} seconds The length in seconds.
+ * @returns {string} Formatted length string.
+ */
+function formatLength(seconds) {
+    if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
+        return 'N/A';
     }
-    
-    console.log('Creating form HTML...');
-    
-    // Create edit form HTML
-    const formHtml = `
-        <tr class="edit-form-row">
-            <td colspan="8" style="background-color: #252525; padding: 20px;">
-                <h3 style="color: white;">EDIT FORM TEST</h3>
-                <p style="color: white;">Editing: ${track.title} by ${track.artist}</p>
-                <button onclick="closeEditForm()" style="background: red; color: white; padding: 10px;">Close</button>
-            </td>
-        </tr>
-    `;
-    
-    console.log('Inserting form HTML...');
-    
-    // Insert the form row right after the clicked row
-    targetRow.insertAdjacentHTML('afterend', formHtml);
-    
-    console.log('Form should be inserted now');
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
 }
 
-function saveTrack(originalTitle, originalArtist, originalAlbum) {
-    const updatedTrack = {
+/**
+ * Formats bitrate from bits per second to kbps.
+ * @param {number} bitrate The bitrate in bits per second.
+ * @returns {string} Formatted bitrate string.
+ */
+function formatBitrate(bitrate) {
+    if (typeof bitrate !== 'number' || isNaN(bitrate) || bitrate < 0) {
+        return 'N/A';
+    }
+    return `${Math.round(bitrate / 1000)} kbps`;
+}
+
+
+// --- Modal related functions ---
+
+let currentEditItem = null; // Stores the item being edited
+
+function openEditModal(item) {
+    currentEditItem = item;
+    document.getElementById('editTitle').value = item.title || '';
+    document.getElementById('editArtist').value = item.artist || '';
+    document.getElementById('editAlbum').value = item.album || '';
+    document.getElementById('editGenre').value = item.genre || '';
+    document.getElementById('editYear').value = item.year || '';
+    document.getElementById('editModalLabel').textContent = `Edit: ${item.title || 'N/A'}`;
+
+    const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    editModal.show();
+}
+
+function saveChanges() {
+    if (!currentEditItem) return;
+
+    const updates = {
         title: document.getElementById('editTitle').value,
         artist: document.getElementById('editArtist').value,
         album: document.getElementById('editAlbum').value,
-        year: document.getElementById('editYear').value,
         genre: document.getElementById('editGenre').value,
-        composer: document.getElementById('editComposer').value,
-        bpm: document.getElementById('editBpm').value,
-        comments: document.getElementById('editComments').value,
+        year: document.getElementById('editYear').value,
+        // Add other fields as necessary
     };
 
-    fetch('/api/library/update', {
+    fetch('/api/library/edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ originalTitle, originalArtist, originalAlbum, updatedTrack })
-    })
-    .then(response => response.json())
-    .then(data => {
-        alert(data.message || 'Track updated successfully.');
-        fetchLibrary();  
-        closeEditForm();
-    })
-    .catch(error => {
-        alert('Error updating track: ' + error.message);
-    });
-}
-
-function removeTrack(title, artist, album) {
-    if (!confirm('Are you sure you want to remove this track from the library?')) return;
-
-    fetch('/api/library/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, artist, album })
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Remove response:', data);
-        if (data.message) {
-            alert(data.message || 'Track removed successfully.');
-        } else {
-            alert('Failed to remove track: ' + (data.error || 'Unknown error.'));
-        }
-        fetchLibrary();  
-        closeEditForm();
-    })
-    .catch(error => {
-        console.error('Error removing track:', error);
-        alert('Error removing track: ' + error.message);
-    });
-}
-
-function deleteTrack(title, artist, album) {
-    if (!confirm('Are you sure you want to delete this track? This action cannot be undone.')) return;
-
-    fetch('/api/library/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, artist, album })
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: currentEditItem.id, updates: updates })
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error('Network response was not ok');
+            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         }
         return response.json();
     })
     .then(data => {
-        console.log('Delete response:', data);
-        if (data.message) {
-            alert(data.message || 'Track deleted successfully.');
-        } else {
-            alert('Failed to delete track: ' + (data.error || 'Unknown error.'));
-        }
-        fetchLibrary();  
-        closeEditForm(); 
+        alert(data.message || 'Changes saved successfully!');
+        const editModal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+        if (editModal) editModal.hide();
+        fetchLibrary(); // Re-fetch library to update the view
     })
     .catch(error => {
-        console.error('Error deleting track:', error);
-        alert('Error deleting track: ' + error.message);
+        console.error('Error saving changes:', error);
+        alert(`Error saving changes: ${error.message}`);
     });
 }
 
-function closeEditForm() {
-    // Remove any existing edit form rows
-    const editRows = document.querySelectorAll('.edit-form-row');
-    editRows.forEach(row => row.remove());
-}
+function openLyricsModal(item) {
+    document.getElementById('lyricsModalLabel').textContent = `Lyrics: ${item.title || 'N/A'} - ${item.artist || 'N/A'}`;
+    const lyricsContent = document.getElementById('lyricsContent');
+    lyricsContent.innerHTML = 'Loading lyrics...'; // Show loading message
 
-function debugLibrary() {
-    fetch('/api/debug_library')
-        .then(response => response.json())
-        .then(data => {
-            console.log('Raw items:', data.raw_items);
-            console.log('Parsed items:', data.parsed_items);
-        })
-        .catch(error => console.error('Error fetching debug data:', error));
+    // Assuming a Beets plugin or external API for lyrics, 
+    // for now, we'll just show a placeholder or a 'Not Available' message.
+    // In a real scenario, you'd make an API call here.
+    // Example: fetch(`/api/lyrics?id=${item.id}`)
+    
+    // Placeholder for actual lyrics fetching:
+    // This part requires a backend endpoint to fetch lyrics.
+    // For now, we'll display a static message.
+    setTimeout(() => {
+        lyricsContent.innerHTML = `<p class="text-muted">Lyrics fetching functionality would go here.</p><p>For track: <strong>${item.title || 'N/A'}</strong> by <strong>${item.artist || 'N/A'}</strong></p>`;
+    }, 500); // Simulate loading
+
+    const lyricsModal = new bootstrap.Modal(document.getElementById('lyricsModal'));
+    lyricsModal.show();
 }
 
 function confirmAction(action, title, artist, album) {
-    const actionText = action === 'delete' ? 'delete this track? This action cannot be undone.' : 'remove this track from the library?';
-    const modalHtml = `
-        <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        Are you sure you want to ${actionText}
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-danger" onclick="executeAction('${action}', '${title}', '${artist}', '${album}')">Confirm</button>
-                    </div>
+    // Create a new modal element each time to avoid issues with Bootstrap's lifecycle
+    const modalId = 'confirmationModal';
+    let modalElement = document.getElementById(modalId);
+    if (modalElement) {
+        modalElement.remove(); // Remove existing modal if it somehow persists
+    }
+
+    modalElement = document.createElement('div');
+    modalElement.className = 'modal fade';
+    modalElement.id = modalId;
+    modalElement.setAttribute('tabindex', '-1');
+    modalElement.setAttribute('aria-labelledby', 'confirmationModalLabel');
+    modalElement.setAttribute('aria-hidden', 'true');
+    modalElement.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to ${action} "${title}" by "${artist}" from album "${album}"?
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmActionButton">
+                        ${action === 'remove' ? 'Remove Permanently' : 'Confirm'}
+                    </button>
                 </div>
             </div>
         </div>
     `;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+    document.body.appendChild(modalElement);
+
+    const confirmButton = document.getElementById('confirmActionButton');
+    confirmButton.onclick = () => {
+        performAction(action, title, artist, album);
+    };
+
+    const confirmationModal = new bootstrap.Modal(modalElement);
     confirmationModal.show();
 }
 
-function executeAction(action, title, artist, album) {
+
+function performAction(action, title, artist, album) {
     const endpoint = action === 'delete' ? '/api/library/delete' : '/api/library/remove';
     fetch(endpoint, {
         method: 'POST',
@@ -433,18 +403,29 @@ function executeAction(action, title, artist, album) {
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error('Network response was not ok');
+            // Check for HTTP errors and parse response for detailed error message
+            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         }
         return response.json();
     })
     .then(data => {
         alert(data.message || `Track ${action}d successfully.`);
-        fetchLibrary();  
-        closeEditForm();
-        document.getElementById('confirmationModal').remove();
+        fetchLibrary(); // Re-fetch library to update the view
+        // Remove the confirmation modal from the DOM
+        const modalElement = document.getElementById('confirmationModal');
+        if (modalElement) {
+            bootstrap.Modal.getInstance(modalElement)?.hide(); // Hide if Bootstrap modal instance exists
+            modalElement.remove(); // Then remove from DOM
+        }
     })
     .catch(error => {
+        console.error(`Error ${action}ing track:`, error);
         alert(`Error ${action}ing track: ${error.message}`);
-        document.getElementById('confirmationModal').remove();
+        // Ensure modal is closed even on error
+        const modalElement = document.getElementById('confirmationModal');
+        if (modalElement) {
+            bootstrap.Modal.getInstance(modalElement)?.hide();
+            modalElement.remove();
+        }
     });
 }

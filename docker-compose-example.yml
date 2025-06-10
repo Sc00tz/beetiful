@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   beetiful:
     build:
@@ -8,7 +10,7 @@ services:
       - "3000:5000"  # Map host port 3000 to container port 5000
     volumes:
       # Mount your music library (adjust the host path as needed)
-      - /Volumes/Media/Media/Music:/music:ro  # Read-only access to music files
+      - /path/to/your/music:/music:ro  # Read-only access to music files
       # Mount beets config directory (persistent storage)
       - ./config:/config
       # Optional: Mount a directory for beets database and state

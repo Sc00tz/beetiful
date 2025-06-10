@@ -19,65 +19,29 @@ function openFileBrowser(callback, initialPath = '/music') {
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <!-- Navigation Bar -->
                         <div class="d-flex mb-3">
                             <div class="input-group">
                                 <span class="input-group-text bg-secondary border-secondary text-light">
                                     <i class="fas fa-folder"></i>
                                 </span>
                                 <input type="text" class="form-control bg-dark border-secondary text-light" 
-                                       id="currentPathInput" value="${initialPath}">
-                                <button class="btn btn-outline-secondary" type="button" onclick="navigateToPath()">
-                                    <i class="fas fa-arrow-right"></i>
-                                </button>
+                                       id="currentPathInput" value="${currentBrowserPath}" readonly>
                             </div>
+                            <button type="button" class="btn btn-outline-secondary ms-2" onclick="goUpDirectory()">
+                                <i class="fas fa-arrow-up"></i> Up
+                            </button>
+                            <button type="button" class="btn btn-primary ms-2" onclick="selectCurrentPath()">
+                                <i class="fas fa-check"></i> Select
+                            </button>
                         </div>
                         
-                        <!-- Quick Access -->
-                        <div class="mb-3">
-                            <small class="text-muted">Quick Access:</small>
-                            <div id="quickAccessButtons" class="mt-1">
-                                <!-- Populated by loadCommonDirectories -->
-                            </div>
-                        </div>
-                        
-                        <!-- File Browser -->
-                        <div class="browser-container">
-                            <div id="browserLoading" class="text-center p-4">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <div class="mt-2">Loading directories...</div>
-                            </div>
-                            <div id="browserContent" style="display: none;">
-                                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                                    <table class="table table-dark table-hover">
-                                        <thead class="table-secondary">
-                                            <tr>
-                                                <th><i class="fas fa-folder"></i> Name</th>
-                                                <th><i class="fas fa-calendar"></i> Modified</th>
-                                                <th width="100">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="browserItems">
-                                            <!-- Populated by loadDirectory -->
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div id="browserError" style="display: none;" class="alert alert-danger">
-                                <!-- Error messages -->
-                            </div>
+                        <div class="file-list-container overflow-auto" style="max-height: 400px;">
+                            <ul id="fileList" class="list-group">
+                                </ul>
                         </div>
                     </div>
                     <div class="modal-footer border-secondary">
-                        <div class="me-auto">
-                            <small class="text-muted">Current: <span id="selectedPath">${initialPath}</span></small>
-                        </div>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" onclick="selectCurrentPath()">
-                            <i class="fas fa-check"></i> Select This Directory
-                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>
@@ -89,145 +53,84 @@ function openFileBrowser(callback, initialPath = '/music') {
     if (existingModal) {
         existingModal.remove();
     }
-    
+
     // Add modal to page
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
     // Show modal
     const modal = new bootstrap.Modal(document.getElementById('fileBrowserModal'));
     modal.show();
-    
-    // Load initial directory and common directories
-    loadCommonDirectories();
-    loadDirectory(currentBrowserPath);
+
+    // Initial browse
+    browseDirectory(initialPath);
 }
 
-function loadCommonDirectories() {
-    fetch('/api/browse/music-dirs')
-        .then(response => response.json())
-        .then(data => {
-            const container = document.getElementById('quickAccessButtons');
-            if (data.directories && data.directories.length > 0) {
-                const buttons = data.directories.map(dir => 
-                    `<button class="btn btn-outline-info btn-sm me-2 mb-1" 
-                             onclick="loadDirectory('${dir.path}')" title="${dir.subdirs} subdirectories">
-                        <i class="fas fa-music"></i> ${dir.name}
-                     </button>`
-                ).join('');
-                container.innerHTML = buttons;
-            } else {
-                container.innerHTML = '<small class="text-muted">No common music directories found</small>';
+function renderBrowser(items) {
+    const fileList = document.getElementById('fileList');
+    fileList.innerHTML = ''; // Clear previous items
+
+    if (!items || items.length === 0) {
+        fileList.innerHTML = '<li class="list-group-item bg-dark text-muted">No items found.</li>';
+        return;
+    }
+
+    items.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item bg-dark text-light d-flex justify-content-between align-items-center directory-row';
+        
+        let icon = '';
+        let onClickAction = '';
+
+        if (item.type === 'directory') {
+            icon = '<i class="fas fa-folder text-warning me-2"></i>';
+            onClickAction = `onclick="browseDirectory('${item.path}')"`;
+            li.innerHTML = `${icon}<span class="directory-name" ${onClickAction}>${item.name}</span>`;
+        } else {
+            icon = '<i class="fas fa-file text-info me-2"></i>';
+            li.innerHTML = `${icon}<span>${item.name}</span>`;
+            if (item.size) {
+                li.innerHTML += `<span class="badge bg-secondary ms-2">${formatBytes(item.size)}</span>`;
             }
-        })
-        .catch(error => {
-            console.error('Error loading common directories:', error);
-            document.getElementById('quickAccessButtons').innerHTML = 
-                '<small class="text-muted">Unable to load quick access</small>';
-        });
+        }
+        
+        fileList.appendChild(li);
+    });
 }
 
-function loadDirectory(path) {
-    currentBrowserPath = path;
-    document.getElementById('currentPathInput').value = path;
-    document.getElementById('selectedPath').textContent = path;
-    
-    // Show loading state
-    document.getElementById('browserLoading').style.display = 'block';
-    document.getElementById('browserContent').style.display = 'none';
-    document.getElementById('browserError').style.display = 'none';
-    
+function browseDirectory(path) {
+    // Corrected: Change method to GET and pass path as query parameter
     fetch(`/api/browse?path=${encodeURIComponent(path)}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                showBrowserError(data.error);
-                return;
+    .then(response => {
+        if (!response.ok) {
+            // Check if the response is JSON, if not, parse as text for better error message
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                return response.json().then(err => { throw new Error(err.error || `HTTP error! Status: ${response.status}`); });
+            } else {
+                return response.text().then(text => { throw new Error(`HTTP error! Status: ${response.status}. Response: ${text.substring(0, 200)}...`); });
             }
-            
-            displayDirectoryContents(data);
-        })
-        .catch(error => {
-            showBrowserError('Failed to load directory: ' + error.message);
-        });
+        }
+        return response.json();
+    })
+    .then(data => {
+        currentBrowserPath = data.current_path;
+        renderBrowser(data.items);
+        document.getElementById('currentPathInput').value = currentBrowserPath;
+    })
+    .catch(error => {
+        console.error('Error Browse directory:', error);
+        alert('Error Browse directory: ' + error.message);
+    });
 }
 
-function displayDirectoryContents(data) {
-    const tbody = document.getElementById('browserItems');
-    tbody.innerHTML = '';
-    
-    if (!data.items || data.items.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="3" class="text-center text-muted">
-                    <i class="fas fa-folder-open"></i> No accessible directories found
-                </td>
-            </tr>
-        `;
+
+function goUpDirectory() {
+    const parentPath = currentBrowserPath.substring(0, currentBrowserPath.lastIndexOf('/'));
+    if (parentPath === '') { // If already at root, stay at root
+        browseDirectory('/');
     } else {
-        data.items.forEach(item => {
-            const icon = item.is_parent ? 'fa-level-up-alt' : 'fa-folder';
-            const nameDisplay = item.is_parent ? '.. (Parent Directory)' : item.name;
-            
-            const row = document.createElement('tr');
-            row.className = 'directory-row';
-            row.style.cursor = 'pointer';
-            
-            row.innerHTML = `
-                <td onclick="loadDirectory('${item.path}')" class="directory-name">
-                    <i class="fas ${icon} text-warning me-2"></i>
-                    <span>${nameDisplay}</span>
-                </td>
-                <td onclick="loadDirectory('${item.path}')" class="text-muted">
-                    ${item.modified}
-                </td>
-                <td>
-                    ${!item.is_parent ? `
-                        <button class="btn btn-outline-success btn-sm" 
-                                onclick="selectPath('${item.path}')"
-                                title="Select this directory">
-                            <i class="fas fa-check"></i>
-                        </button>
-                    ` : ''}
-                </td>
-            `;
-            
-            tbody.appendChild(row);
-        });
+        browseDirectory(parentPath);
     }
-    
-    // Hide loading, show content
-    document.getElementById('browserLoading').style.display = 'none';
-    document.getElementById('browserContent').style.display = 'block';
-}
-
-function showBrowserError(message) {
-    document.getElementById('browserLoading').style.display = 'none';
-    document.getElementById('browserContent').style.display = 'none';
-    
-    const errorDiv = document.getElementById('browserError');
-    errorDiv.innerHTML = `
-        <strong>Error:</strong> ${message}
-        <button class="btn btn-outline-light btn-sm ms-2" onclick="loadDirectory('/music')">
-            Try /music
-        </button>
-        <button class="btn btn-outline-light btn-sm ms-2" onclick="loadDirectory('/')">
-            Go to Root
-        </button>
-    `;
-    errorDiv.style.display = 'block';
-}
-
-function navigateToPath() {
-    const path = document.getElementById('currentPathInput').value;
-    if (path) {
-        loadDirectory(path);
-    }
-}
-
-function selectPath(path) {
-    currentBrowserPath = path;
-    document.getElementById('selectedPath').textContent = path;
-    selectCurrentPath();
 }
 
 function selectCurrentPath() {
@@ -239,6 +142,16 @@ function selectCurrentPath() {
     const modal = bootstrap.Modal.getInstance(document.getElementById('fileBrowserModal'));
     modal.hide();
 }
+
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
 
 // Utility function to add browse button to any input field
 function addBrowseButton(inputId, buttonText = 'Browse') {
@@ -271,4 +184,4 @@ document.addEventListener('DOMContentLoaded', () => {
             addBrowseButton('importPath', 'Browse');
         }
     }, 1000);
-})
+});

@@ -4,8 +4,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeTabs();
 });
 
+/**
+ * Initializes Bootstrap tab switching functionality.
+ */
 function initializeTabs() {
-    // Handle tab switching
+    // Handle tab switching when a tab is shown
     const tabs = document.querySelectorAll('[data-bs-toggle="tab"]');
     tabs.forEach(tab => {
         tab.addEventListener('shown.bs.tab', function (event) {
@@ -13,11 +16,20 @@ function initializeTabs() {
             handleTabChange(targetId);
         });
     });
-    
-    // Initialize with library tab active
-    handleTabChange('#library-content');
+
+    // Manually trigger the 'shown.bs.tab' event for the initially active tab
+    // to ensure content loads on first page visit.
+    const activeTabButton = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
+    if (activeTabButton) {
+        const targetId = activeTabButton.getAttribute('data-bs-target');
+        handleTabChange(targetId); // Directly call handler for initial load
+    }
 }
 
+/**
+ * Handles actions to perform when a specific tab becomes active.
+ * @param {string} targetId The ID of the content pane being activated (e.g., '#library-content').
+ */
 function handleTabChange(targetId) {
     switch(targetId) {
         case '#library-content':
@@ -26,172 +38,103 @@ function handleTabChange(targetId) {
         case '#config-content':
             handleConfigTab();
             break;
+        case '#plugins-content': // Assuming you have a #plugins-content tab
+            handlePluginsTab();
+            break;
+        // Add more cases for other tabs as needed
     }
 }
 
+/**
+ * Actions specific to the Library tab when it becomes active.
+ */
 function handleLibraryTab() {
     // Refresh library data when switching to library tab
     if (typeof fetchLibrary === 'function') {
         fetchLibrary();
     }
+    // Adjust layout if there's a function for it
+    if (typeof adjustLibraryLayout === 'function') {
+        adjustLibraryLayout();
+    }
 }
 
+/**
+ * Actions specific to the Configuration tab when it becomes active.
+ */
 function handleConfigTab() {
     // Load config and plugins when switching to config tab
     if (typeof viewConfig === 'function') {
         viewConfig();
     }
-    
+}
+
+/**
+ * Actions specific to the Plugins tab when it becomes active.
+ */
+function handlePluginsTab() {
     if (typeof loadPlugins === 'function') {
         loadPlugins();
     }
 }
 
-// Remove all the old editTrack override code since we're doing inline editing now
+// --- Removed old editTrack/closeEditForm override code ---
+// As per previous discussions and comments, this global override pattern
+// is being removed to allow for a more direct inline editing approach,
+// where edit functionality is likely handled within library.js or directly
+// in the generated HTML for each row.
+// --- End of removed section ---
 
-// Function to switch to a specific tab programmatically
-function switchToTab(tabId) {
-    const tab = document.querySelector(`[data-bs-target="${tabId}"]`);
-    if (tab) {
-        const tabInstance = new bootstrap.Tab(tab);
-        tabInstance.show();
-    }
-}
 
-// Function to check which tab is currently active
-function getCurrentTab() {
-    const activeTab = document.querySelector('.nav-link.active');
-    if (activeTab) {
-        return activeTab.getAttribute('data-bs-target');
-    }
-    return null;
-}// Tab management functionality
-
-document.addEventListener('DOMContentLoaded', () => {
-    initializeTabs();
-});
-
-function initializeTabs() {
-    // Handle tab switching
-    const tabs = document.querySelectorAll('[data-bs-toggle="tab"]');
-    tabs.forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function (event) {
-            const targetId = event.target.getAttribute('data-bs-target');
-            handleTabChange(targetId);
-        });
-    });
-    
-    // Initialize with library tab active
-    handleTabChange('#library-content');
-}
-
-function handleTabChange(targetId) {
-    switch(targetId) {
-        case '#library-content':
-            handleLibraryTab();
-            break;
-        case '#config-content':
-            handleConfigTab();
-            break;
-    }
-}
-
-function handleLibraryTab() {
-    // Refresh library data when switching to library tab
-    if (typeof fetchLibrary === 'function') {
-        fetchLibrary();
-    }
-    
-    // Hide edit form container by default
-    const editForm = document.getElementById('editFormContainer');
-    if (editForm) {
-        editForm.style.display = 'none';
-    }
-    
-    // Ensure main content takes full width when edit form is hidden
-    adjustLibraryLayout();
-}
-
-function handleConfigTab() {
-    // Load config and plugins when switching to config tab
-    if (typeof viewConfig === 'function') {
-        viewConfig();
-    }
-    
-    if (typeof loadPlugins === 'function') {
-        loadPlugins();
-    }
-}
-
-function adjustLibraryLayout() {
-    const mainContent = document.querySelector('.main-content');
-    const editForm = document.getElementById('editFormContainer');
-    
-    if (editForm && editForm.style.display === 'none') {
-        // When edit form is hidden, let main content use more space
-        mainContent.style.marginRight = '20px';
-    } else {
-        // When edit form is visible, adjust margins accordingly
-        mainContent.style.marginRight = '0';
-    }
-}
-
-// Override the existing editTrack function to show the form container
-window.originalEditTrack = window.editTrack;
-window.editTrack = function(track) {
-    // Show the edit form container
-    const editForm = document.getElementById('editFormContainer');
-    if (editForm) {
-        editForm.style.display = 'block';
-        adjustLibraryLayout();
-    }
-    
-    // Call the original editTrack function
-    if (window.originalEditTrack) {
-        window.originalEditTrack(track);
-    }
-};
-
-// Override the closeEditForm function to hide the container
-window.originalCloseEditForm = window.closeEditForm;
-window.closeEditForm = function() {
-    // Call the original closeEditForm function
-    if (window.originalCloseEditForm) {
-        window.originalCloseEditForm();
-    }
-    
-    // Hide the edit form container
-    const editForm = document.getElementById('editFormContainer');
-    if (editForm) {
-        editForm.style.display = 'none';
-        adjustLibraryLayout();
-    }
-};
-
-// Add event listener for escape key to close edit form
+// Add event listener for escape key to close a potential edit form or modal
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
-        const editForm = document.getElementById('editFormContainer');
-        if (editForm && editForm.style.display !== 'none') {
-            closeEditForm();
+        const editForm = document.getElementById('editFormContainer'); // Assuming this still represents some form/modal
+        // Only attempt to close if it's visible (or not explicitly hidden)
+        if (editForm && window.getComputedStyle(editForm).display !== 'none') {
+            // If closeEditForm exists (e.g., in library.js), call it.
+            // Otherwise, manually hide the element.
+            if (typeof closeEditForm === 'function') {
+                closeEditForm();
+            } else {
+                editForm.style.display = 'none';
+                if (typeof adjustLibraryLayout === 'function') {
+                    adjustLibraryLayout();
+                }
+            }
         }
     }
 });
 
-// Function to switch to a specific tab programmatically
+/**
+ * Function to switch to a specific tab programmatically.
+ * Useful if you want to navigate between tabs from other parts of your JS.
+ * @param {string} tabId The data-bs-target ID of the tab (e.g., '#library-content').
+ */
 function switchToTab(tabId) {
-    const tab = document.querySelector(`[data-bs-target="${tabId}"]`);
-    if (tab) {
-        const tabInstance = new bootstrap.Tab(tab);
-        tabInstance.show();
+    const tabButton = document.querySelector(`[data-bs-target="${tabId}"]`);
+    if (tabButton) {
+        const tabInstance = new bootstrap.Tab(tabButton);
+        tabInstance.show(); // Activates the tab
     }
 }
 
-// Function to check which tab is currently active
+/**
+ * Function to check which tab is currently active.
+ * @returns {string|null} The data-bs-target ID of the active tab, or null if none is active.
+ */
 function getCurrentTab() {
-    const activeTab = document.querySelector('.nav-link.active');
+    const activeTab = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
     if (activeTab) {
         return activeTab.getAttribute('data-bs-target');
     }
     return null;
+}
+
+// Placeholder for adjustLibraryLayout if it's defined elsewhere (e.g., style.js or index.html)
+// This function would typically adjust the layout of the library view,
+// for instance, if an inline edit form expands/collapses.
+function adjustLibraryLayout() {
+    // console.log('adjustLibraryLayout called (placeholder)');
+    // Implement actual layout adjustments here if needed
 }

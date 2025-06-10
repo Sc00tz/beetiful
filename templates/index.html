@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="static/css/style.css">
 </head>
 <body>
-    <!-- TOP NAVIGATION BAR -->
     <nav class="navbar navbar-dark bg-dark border-bottom">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">Beetiful</span>
@@ -24,129 +23,133 @@
                         <i class="fas fa-cog"></i> Configuration
                     </button>
                 </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="plugins-tab" data-bs-toggle="tab" data-bs-target="#plugins-content" type="button">
+                        <i class="fas fa-puzzle-piece"></i> Plugins
+                    </button>
+                </li>
+                 <li class="nav-item">
+                    <button class="nav-link" id="commands-tab" data-bs-toggle="tab" data-bs-target="#commands-content" type="button">
+                        <i class="fas fa-terminal"></i> Run Command
+                    </button>
+                </li>
             </ul>
         </div>
     </nav>
 
-    <!-- TAB CONTENT -->
-    <div class="tab-content">
-        <!-- MUSIC LIBRARY TAB -->
-        <div class="tab-pane fade show active" id="library-content">
-            <div class="container-fluid">
-                <div class="row">
-                    <!-- Command Builder Sidebar -->
-                    <div class="col-md-3 p-3">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <h5 class="card-title text-light">Command Builder</h5>
-                                <select id="command" class="form-select bg-dark text-light border-secondary mb-2" onchange="updateCommandOptions()">
-                                    <option value="" disabled selected>Choose Command</option>
-                                    <option value="import">Import</option>
-                                    <option value="update">Update</option>
-                                    <option value="list">List</option>
-                                    <option value="modify">Modify</option>
-                                    <option value="config">Config</option>
-                                </select>
-                                <div id="command-options" class="mb-2"></div>
-                                <button class="btn btn-primary w-100 mb-2" onclick="runCommand()">Run Command</button>
-                                <pre id="commandPreview" class="bg-secondary text-light p-2 rounded small"></pre>
-                                <pre id="commandResult" class="bg-secondary text-light p-2 rounded small"></pre>
+    <div class="container-fluid flex-grow-1 py-3">
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="library-content" role="tabpanel" aria-labelledby="library-tab">
+                <div class="card bg-dark border-secondary">
+                    <div class="card-body">
+                        <h5 class="card-title text-light"><i class="fas fa-music"></i> Your Music Library</h5>
+                        <div id="libraryMessage" class="mt-3"></div> <div class="row mb-3">
+                            <div class="col-md-6">
+                                <input type="text" id="filterInput" class="form-control bg-secondary text-light border-secondary" placeholder="Filter library..." onkeyup="applyFilters()">
+                            </div>
+                            <div class="col-md-6 text-end text-light pt-2">
+                                Total Tracks: <span id="totalTracks"></span> | Total Artists: <span id="totalArtists"></span> | Total Albums: <span id="totalAlbums"></span>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Main Library Content -->
-                    <div class="col-md-9 p-3" id="libraryMainColumn">
-                        <!-- Pagination -->
-                        <div id="paginationControls" class="d-flex justify-content-center mb-3"></div>
-
-                        <!-- Library Table -->
-                        <div class="table-responsive">
-                            <table class="table table-dark table-striped" id="libraryTable">
-                                <thead class="table-secondary">
-                                    <tr id="tableHeaders">
-                                        <th data-column="0">
-                                            Title <span id="totalTracks" class="badge bg-primary"></span>
-                                            <input type="text" id="filterTitle" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th data-column="1">
-                                            Artist <span id="totalArtists" class="badge bg-primary"></span>
-                                            <input type="text" id="filterArtist" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th data-column="2">
-                                            Album <span id="totalAlbums" class="badge bg-primary"></span>
-                                            <input type="text" id="filterAlbum" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th data-column="3">
-                                            Genre
-                                            <input type="text" id="filterGenre" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th data-column="4">
-                                            Year
-                                            <input type="text" id="filterYear" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th data-column="5">
-                                            BPM
-                                            <input type="text" id="filterBPM" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th data-column="6">
-                                            Composer
-                                            <input type="text" id="filterComposer" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" placeholder="Filter">
-                                        </th>
-                                        <th>
-                                            <button class="btn btn-outline-danger btn-sm" onclick="clearFilters()">Clear Filters</button>
-                                        </th>
+                        <div class="table-responsive overflow-auto" style="max-height: 65vh;">
+                            <table class="table table-dark table-striped table-hover caption-top">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" onclick="sortLibrary('title')">Title <i class="fas fa-sort"></i></th>
+                                        <th scope="col" onclick="sortLibrary('artist')">Artist <i class="fas fa-sort"></i></th>
+                                        <th scope="col" onclick="sortLibrary('album')">Album <i class="fas fa-sort"></i></th>
+                                        <th scope="col" onclick="sortLibrary('genre')">Genre <i class="fas fa-sort"></i></th>
+                                        <th scope="col" onclick="sortLibrary('year')">Year <i class="fas fa-sort"></i></th>
+                                        <th scope="col" onclick="sortLibrary('length')">Length <i class="fas fa-sort"></i></th>
+                                        <th scope="col" onclick="sortLibrary('bitrate')">Bitrate <i class="fas fa-sort"></i></th>
+                                        <th scope="col">Path</th>
+                                        <th scope="col">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="libraryResults">
-                                    <!-- Populated by JavaScript -->
+                                    <tr><td colspan="9" class="text-center text-muted py-3">Loading library...</td></tr>
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-
-                    <!-- Edit Form Panel (Hidden by default) -->
-                    <div class="col-md-3 p-3" id="editFormColumn" style="display: none;">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body" id="editFormContainer">
-                                <!-- Shows when editing a track -->
-                            </div>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <button class="btn btn-secondary btn-sm" id="prevPage" onclick="prevPage()">Previous</button>
+                            <span class="text-light">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+                            <button class="btn btn-secondary btn-sm" id="nextPage" onclick="nextPage()">Next</button>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- CONFIGURATION TAB -->
-        <div class="tab-pane fade" id="config-content">
-            <div class="container-fluid p-3">
+            <div class="tab-pane fade" id="config-content" role="tabpanel" aria-labelledby="config-tab">
+                <div class="card bg-dark border-secondary">
+                    <div class="card-body">
+                        <h5 class="card-title text-light"><i class="fas fa-cog"></i> Beets Configuration</h5>
+                        <p class="text-muted">Edit your `config.yaml` directly. Click save to apply changes.
+                            <br><small>Remember to restart the application for some changes to take full effect.</small>
+                        </p>
+                        <div id="configMessage" class="mt-3"></div> <textarea id="configEditor" class="form-control bg-secondary text-light border-secondary" rows="20"></textarea>
+                        <button class="btn btn-primary mt-3" onclick="saveConfig()"><i class="fas fa-save"></i> Save Configuration</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="plugins-content" role="tabpanel" aria-labelledby="plugins-tab">
+                <div class="card bg-dark border-secondary">
+                    <div class="card-body">
+                        <h5 class="card-title text-light"><i class="fas fa-puzzle-piece"></i> Beets Plugin Manager</h5>
+                        <p class="text-muted">Install, enable, and configure Beets plugins.</p>
+                        <div id="pluginMessage" class="mt-3"></div> <div id="pluginsList" class="row">
+                            <div class="col-12 text-center text-muted py-3">Loading plugins...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="commands-content" role="tabpanel" aria-labelledby="commands-tab">
                 <div class="row">
-                    <!-- Config Editor -->
-                    <div class="col-lg-6">
+                    <div class="col-lg-6 mb-3 mb-lg-0">
                         <div class="card bg-dark border-secondary h-100">
                             <div class="card-body">
-                                <h5 class="card-title text-light"><i class="fas fa-edit"></i> Config Editor</h5>
-                                <p class="text-muted">Edit your beets configuration directly</p>
-                                <textarea id="configTextArea" rows="25" class="form-control bg-dark text-light border-secondary font-monospace"></textarea>
-                                <button class="btn btn-success mt-3" onclick="editConfig()">
-                                    <i class="fas fa-save"></i> Save Config
-                                </button>
-                                <pre id="configResult" class="bg-secondary text-light p-2 rounded small mt-2"></pre>
+                                <h5 class="card-title text-light"><i class="fas fa-terminal"></i> Execute Beets Command</h5>
+                                <div class="mb-3">
+                                    <label for="command" class="form-label text-light">Command:</label>
+                                    <select class="form-select bg-secondary text-light border-secondary" id="command">
+                                        </select>
+                                </div>
+                                <div class="mb-3" id="command-options">
+                                    </div>
+                                <div class="mb-3">
+                                    <label for="args" class="form-label text-light">Additional Arguments:</label>
+                                    <input type="text" class="form-control bg-secondary text-light border-secondary" id="args" placeholder="-a /path/to/music -y">
+                                </div>
+                                <button class="btn btn-primary" onclick="executeCommand()"><i class="fas fa-play"></i> Run Command</button>
+                                <div id="commandResult" class="mt-2 text-info"></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Plugin Manager -->
                     <div class="col-lg-6">
                         <div class="card bg-dark border-secondary h-100">
                             <div class="card-body">
-                                <h5 class="card-title text-light"><i class="fas fa-puzzle-piece"></i> Plugin Manager</h5>
-                                <p class="text-muted">Install and manage beets plugins</p>
-                                <div class="overflow-auto" style="max-height: 600px;">
-                                    <div id="pluginsList">
-                                        <div class="text-center p-4 text-muted">Loading plugins...</div>
-                                    </div>
-                                </div>
+                                <h5 class="card-title text-light"><i class="fas fa-info-circle"></i> Application Status</h5>
+                                <ul class="list-group list-group-flush bg-dark text-light">
+                                    <li class="list-group-item bg-dark border-secondary text-light">
+                                        Beets Library Path: <span class="badge bg-secondary">/music</span>
+                                    </li>
+                                    <li class="list-group-item bg-dark border-secondary text-light">
+                                        Beets Config Path: <span class="badge bg-secondary">/config/config.yaml</span>
+                                    </li>
+                                    <li class="list-group-item bg-dark border-secondary text-light">
+                                        Total Music Tracks: <span id="totalTracks" class="badge bg-primary">Loading...</span>
+                                    </li>
+                                    <li class="list-group-item bg-dark border-secondary text-light">
+                                        Total Music Artists: <span id="totalArtists" class="badge bg-primary">Loading...</span>
+                                    </li>
+                                    <li class="list-group-item bg-dark border-secondary text-light">
+                                        Total Music Albums: <span id="totalAlbums" class="badge bg-primary">Loading...</span>
+                                    </li>
+                                </ul>
                             </div>
                         </div>
                     </div>
@@ -155,7 +158,87 @@
         </div>
     </div>
 
-    <!-- Scripts -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="editModalLabel"><i class="fas fa-edit"></i> Edit Track Metadata</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form>
+                        <input type="hidden" id="editOriginalTitle">
+                        <input type="hidden" id="editOriginalArtist">
+                        <input type="hidden" id="editOriginalAlbum">
+
+                        <div class="mb-3">
+                            <label for="editTitle" class="form-label">Title</label>
+                            <input type="text" class="form-control bg-secondary text-light border-secondary" id="editTitle">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editArtist" class="form-label">Artist</label>
+                            <input type="text" class="form-control bg-secondary text-light border-secondary" id="editArtist">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editAlbum" class="form-label">Album</label>
+                            <input type="text" class="form-control bg-secondary text-light border-secondary" id="editAlbum">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editGenre" class="form-label">Genre</label>
+                            <input type="text" class="form-control bg-secondary text-light border-secondary" id="editGenre">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editYear" class="form-label">Year</label>
+                            <input type="number" class="form-control bg-secondary text-light border-secondary" id="editYear">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveTrackChanges()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="confirmationModalLabel"><i class="fas fa-exclamation-triangle"></i> Confirm Action</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="confirmationModalBody">
+                    </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmActionButton">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="pluginConfigModal" tabindex="-1" aria-labelledby="pluginConfigModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="pluginConfigModalLabel">Configure Plugin: <span id="pluginConfigName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">Edit the YAML configuration for this plugin:</p>
+                    <textarea id="pluginConfigEditor" class="form-control bg-secondary text-light border-secondary" rows="15"></textarea>
+                    <p class="text-muted mt-2">Example configuration for reference:</p>
+                    <pre id="pluginConfigTemplate" class="p-3 text-black-50"></pre>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="savePluginConfig()"><i class="fas fa-save"></i> Save Plugin Config</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="static/js/library.js"></script>
