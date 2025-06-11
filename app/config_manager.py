@@ -1,6 +1,5 @@
-"""
-Configuration management for beets
-"""
+"""Configuration management for Beets and plugin definitions"""
+
 import os
 import yaml
 import logging

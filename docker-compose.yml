@@ -10,9 +10,9 @@ services:
       # Mount your music library (adjust the host path as needed)
       - /Volumes/Media/Media/Music:/music:ro  # Read-only access to music files
       # Mount beets config directory (persistent storage)
-      - ./config:/config
+      - ./config:/config:rw
       # Optional: Mount a directory for beets database and state
-      - beetiful_data:/app/instance
+      - beetiful_data:/app/instance:rw
     environment:
       - BEETSDIR=/config
       - LIBRARY_PATH=/music

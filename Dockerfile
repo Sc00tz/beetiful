@@ -1,79 +1,69 @@
-FROM python:3.11-slim
+# Stage 1: Build stage
+FROM python:3.11-slim as builder
 
-# Install system dependencies for beets and audio processing
-RUN apt-get update && apt-get install -y \
-    # Build tools and compilers
+# Install build dependencies only
+RUN apt-get update && apt-get install -y --fix-missing \
     build-essential \
     gcc \
     g++ \
     pkg-config \
-    # Required for beets
     python3-dev \
-    # Audio libraries for various formats
-    ffmpeg \
-    # For ReplayGain calculation (optional)
-    mp3gain \
-    vorbisgain \
-    # For fetching album art and lyrics
-    curl \
-    wget \
-    # General utilities
-    git \
-    # Image processing for album art
-    libjpeg-dev \
-    libpng-dev \
-    # Clean up
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+WORKDIR /build
+
+# Copy requirements first for better layer caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir 'beets==2.3.1' requests pillow beautifulsoup4 langdetect
+
+# Copy the application code
+COPY . /build/
+
+# Stage 2: Runtime stage
+FROM python:3.11-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --fix-missing \
+    ffmpeg \
+    mp3gain \
+    vorbisgain \
+    curl \
+    wget \
+    git \
+    libjpeg-dev \
+    libpng-dev \
+    python3-pip \
+    && pip3 install --no-cache-dir 'beets==2.3.1' \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Create non-root user for security
+# Create non-root user
 RUN useradd -m -u 1000 beetiful && \
     chown -R beetiful:beetiful /app
 
-# Copy requirements first for better Docker layer caching
-COPY requirements.txt .
+# Copy from builder - more explicit paths
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /build/app /app
+COPY --from=builder /build/static /app/static
+COPY --from=builder /build/templates /app/templates
 
-# Install Python dependencies from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Beets 2.3.1 with all built-in plugins
-# No need for separate plugin installations since they're built-in now
-RUN pip install --no-cache-dir 'beets==2.3.1'
-
-# Install optional dependencies for plugins that need them
-# Only install packages that actually exist and are needed
-RUN pip install --no-cache-dir \
-    requests \
-    pillow \
-    beautifulsoup4 \
-    langdetect
-
-# Copy application code
-COPY . .
-
-# Create necessary directories
+# Create directories with explicit permissions
 RUN mkdir -p /config /music /app/instance && \
     chown -R beetiful:beetiful /config /music /app
 
-# Switch to non-root user
 USER beetiful
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
-ENV BEETSDIR=/config
-ENV LIBRARY_PATH=/music
-ENV FLASK_PORT=5000
+# Environment variables in alphabetical order
+ENV BEETSDIR=/config \
+    FLASK_APP=app.py \
+    FLASK_ENV=production \
+    FLASK_PORT=5000 \
+    LIBRARY_PATH=/music \
+    PYTHONUNBUFFERED=1
 
-# Expose the port
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/ || exit 1
-
-# Start the application
+# Start the Flask application
 CMD ["python", "app.py"]

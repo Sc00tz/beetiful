@@ -1,4 +1,5 @@
-// static/js/plugins.js - Updated for beets 2.3.1
+// Plugin management logic for Beets web UI
+// Handles loading, enabling, disabling, and configuring plugins
 
 let pluginsData = {};
 
@@ -6,14 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPlugins();
 });
 
+// Load plugins from the server
 function loadPlugins() {
+    showPluginsSpinner();
     fetch('/api/plugins')
         .then(response => {
-            if (!response.ok) {
-                return response.json().then(err => {
-                    throw new Error(err.error || `HTTP error! Status: ${response.status}`);
-                });
-            }
+            if (!response.ok) return response.json().then(err => { throw new Error(err.error || `HTTP error! Status: ${response.status}`); });
             return response.json();
         })
         .then(data => {
@@ -21,97 +20,71 @@ function loadPlugins() {
             renderPlugins(data);
         })
         .catch(error => {
-            console.error('Error loading plugins:', error);
             const pluginsList = document.getElementById('pluginsList');
-            if (pluginsList) {
-                pluginsList.innerHTML = '<div class="alert alert-danger">Error loading plugins: ' + error.message + '</div>';
-            }
+            if (pluginsList) pluginsList.innerHTML = '<div class="alert alert-danger">Error loading plugins: ' + error.message + '</div>';
         });
 }
 
+// Render the list of plugins
 function renderPlugins(data) {
     const container = document.getElementById('pluginsList');
-
-    if (!container) {
-        console.error('Plugins list container not found.');
-        return;
-    }
-
+    if (!container) return;
     if (!data.available || data.available.length === 0) {
         container.innerHTML = '<div class="plugin-empty text-muted text-center py-3">No plugins available</div>';
         return;
     }
-
     let html = '';
-
-    // Group plugins by status
     const enabledPlugins = data.available.filter(p => p.enabled);
     const availablePlugins = data.available.filter(p => !p.enabled);
-
     if (enabledPlugins.length > 0) {
         html += '<div class="plugin-section-title mt-4 mb-2 h5 text-success">Enabled Plugins</div>';
-        enabledPlugins.forEach(plugin => {
-            html += renderPluginCard(plugin, true);
-        });
+        enabledPlugins.forEach(plugin => { html += renderPluginCard(plugin, true); });
     }
-
     if (availablePlugins.length > 0) {
         html += '<div class="plugin-section-title mt-4 mb-2 h5 text-info">Available Plugins</div>';
         html += '<p class="text-muted mb-3">These plugins are built into beets 2.3.1 and ready to use. Just click "Enable" to activate them.</p>';
-        availablePlugins.forEach(plugin => {
-            html += renderPluginCard(plugin, false);
-        });
+        availablePlugins.forEach(plugin => { html += renderPluginCard(plugin, false); });
     }
-
     container.innerHTML = html;
 }
 
+// Render a single plugin card
 function renderPluginCard(plugin, isEnabled) {
     const statusBadgeClass = isEnabled ? 'badge-success' : 'badge-secondary';
     const builtInBadge = plugin.built_in ? '<span class="badge badge-info me-1">Built-in</span>' : '';
-
     const statusBadge = `<span class="badge ${statusBadgeClass} me-1">${isEnabled ? 'Enabled' : 'Disabled'}</span>`;
-
     const actionButtons = isEnabled ? `
-        <button class="btn btn-sm btn-info me-1"
-                onclick="configurePlugin('${plugin.name}')" title="Configure Plugin">
+        <button class="btn btn-sm btn-info me-1" onclick="configurePlugin('${plugin.name}')" title="Configure Plugin">
             <i class="fas fa-cog"></i> Configure
         </button>
-        <button class="btn btn-sm btn-warning"
-                onclick="disablePlugin('${plugin.name}')" title="Disable Plugin">
+        <button class="btn btn-sm btn-warning" onclick="disablePlugin('${plugin.name}')" title="Disable Plugin">
             <i class="fas fa-times-circle"></i> Disable
         </button>
     ` : `
-        <button class="btn btn-sm btn-success"
-                onclick="enablePlugin('${plugin.name}')" title="Enable Plugin">
+        <button class="btn btn-sm btn-success" onclick="enablePlugin('${plugin.name}')" title="Enable Plugin">
             <i class="fas fa-check-circle"></i> Enable
         </button>
     `;
-
     return `
         <div class="card bg-dark text-light border-secondary mb-3">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h5 class="card-title mb-0">${plugin.name}</h5>
-                    <div>
-                        ${statusBadge}
-                        ${builtInBadge}
-                    </div>
+                    <div>${statusBadge}${builtInBadge}</div>
                 </div>
                 <p class="card-text text-muted">${plugin.description || 'No description available.'}</p>
-                <div class="d-flex justify-content-end mt-3">
-                    ${actionButtons}
-                </div>
+                <div class="d-flex justify-content-end mt-3">${actionButtons}</div>
             </div>
         </div>
     `;
 }
 
-// Remove the install function since plugins are built-in
+// Install a plugin (built-in plugins show an alert)
 function installPlugin(pluginName) {
     alert(`The ${pluginName} plugin is built into beets 2.3.1. Just click "Enable" to activate it!`);
 }
 
+// Enable a plugin
 function enablePlugin(pluginName) {
     fetch('/api/plugins/enable', {
         method: 'POST',
@@ -119,40 +92,32 @@ function enablePlugin(pluginName) {
         body: JSON.stringify({ plugin_name: pluginName })
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-        }
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         return response.json();
     })
     .then(data => {
         if (data.error) {
             alert('Enable failed: ' + data.error);
         } else {
-            // Show success message with instructions
             alert(data.message + '\n\nNote: You may need to restart the application for some plugins to take full effect.');
-            loadPlugins(); // Reload to update status
+            loadPlugins();
         }
     })
     .catch(error => {
         alert('Enable failed: ' + error.message);
-        console.error('Enable error:', error);
     });
 }
 
+// Disable a plugin
 function disablePlugin(pluginName) {
-    if (!confirm(`Are you sure you want to disable the ${pluginName} plugin?`)) {
-        return;
-    }
-
+    if (!confirm(`Are you sure you want to disable the ${pluginName} plugin?`)) return;
     fetch('/api/plugins/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plugin_name: pluginName })
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-        }
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         return response.json();
     })
     .then(data => {
@@ -160,21 +125,19 @@ function disablePlugin(pluginName) {
             alert('Disable failed: ' + data.error);
         } else {
             alert(data.message);
-            loadPlugins(); // Reload to update status
+            loadPlugins();
         }
     })
     .catch(error => {
         alert('Disable failed: ' + error.message);
-        console.error('Disable error:', error);
     });
 }
 
+// Configure a plugin
 function configurePlugin(pluginName) {
     fetch(`/api/plugins/config/${pluginName}`)
         .then(response => {
-            if (!response.ok) {
-                return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-            }
+            if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
             return response.json();
         })
         .then(data => {
@@ -184,17 +147,14 @@ function configurePlugin(pluginName) {
         })
         .catch(error => {
             alert('Failed to load plugin configuration: ' + error.message);
-            console.error('Load plugin config error:', error);
         });
 }
 
+// Show the plugin configuration modal
 function showPluginConfigModal(pluginName, currentConfig, template) {
     const modalId = 'pluginConfigModal';
     const existingModal = document.getElementById(modalId);
-    if (existingModal) {
-        existingModal.remove();
-    }
-
+    if (existingModal) existingModal.remove();
     const modalHtml = `
         <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}Label" aria-hidden="true">
             <div class="modal-dialog modal-lg">
@@ -230,34 +190,34 @@ function showPluginConfigModal(pluginName, currentConfig, template) {
             </div>
         </div>
     `;
-
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     const modal = new bootstrap.Modal(document.getElementById(modalId));
     modal.show();
 }
 
+// Show a spinner while plugins are loading
+function showPluginsSpinner(message = 'Loading plugins...') {
+    const pluginsList = document.getElementById('pluginsList');
+    if (pluginsList) pluginsList.innerHTML = `<div class="text-center"><i class="fas fa-spinner fa-spin"></i> ${message}</div>`;
+}
+
+// Save the plugin configuration
 function savePluginConfig(pluginName) {
     const configTextarea = document.getElementById('pluginConfigText');
     const configText = configTextarea ? configTextarea.value : '';
-
-    if (!configText) {
+    if (!configText.trim()) {
         alert('Configuration content cannot be empty.');
         return;
     }
-
     try {
-        // Parse YAML to validate it
         const config = jsyaml.load(configText);
-
         fetch(`/api/plugins/config/${pluginName}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ config: config })
         })
         .then(response => {
-            if (!response.ok) {
-                return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-            }
+            if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
             return response.json();
         })
         .then(data => {
@@ -268,20 +228,15 @@ function savePluginConfig(pluginName) {
                 const modalElement = document.getElementById('pluginConfigModal');
                 if (modalElement) {
                     const modal = bootstrap.Modal.getInstance(modalElement);
-                    if (modal) {
-                        modal.hide();
-                    }
+                    if (modal) modal.hide();
                     modalElement.remove();
                 }
             }
         })
         .catch(error => {
             alert('Configuration save failed: ' + error.message);
-            console.error('Save plugin config error:', error);
         });
-
     } catch (e) {
         alert('Invalid YAML configuration: ' + e.message);
-        console.error('YAML parsing error:', e);
     }
 }

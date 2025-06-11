@@ -1,85 +1,73 @@
-# Beetiful
+# Beetiful: A Modern Web UI for Beets
 
-<img src="https://github.com/user-attachments/assets/7a8eabb9-bfc4-4f40-a07c-382d382e64f7" width="200" height="200">
+Beetiful is a modern, user-friendly web frontend for the [beets](https://beets.io/) music library manager. It lets you browse, search, edit, and manage your music collection from any browser, with full support for lyrics, plugins, and more.
 
-Beetiful is a simple yet elegant web-based interface for managing your music library using [beets](https://beets.io/). It allows you to manage and interact with your music library through an intuitive GUI, while leveraging the power of beets on the backend.
-## Support This Project
-
-If you find this project helpful, please consider supporting it. Your contributions help maintain and improve the project. Any support is greatly appreciated! ❤️
-https://buymeacoffee.com/vansmak
-Thank you for your support!
+---
 
 ## Features
+- Browse and search your beets music library
+- View and edit track, album, and artist metadata
+- Fetch and display lyrics (with LRC/timed support)
+- Plugin management (enable/disable built-in plugins)
+- Config editor with YAML validation
+- Responsive, dark-themed UI
+- Dockerized for easy deployment
 
-- Command Builder for running Beets commands
-- Config Editor to edit the `beets` configuration file directly from the interface
-- Music Library Viewer with filtering, sorting, and pagination
-- Simple integration with beets' advanced music management features
+---
 
-## Future additions
-- Docker
-- Plugin manager
-- More commands
-- Mobile friendly layout
-## Installation
+## Quick Start (Docker)
 
-To install Beetiful, follow these steps:
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/yourusername/beetiful.git
+   cd beetiful
+   ```
 
-1. **Clone the Repository**
+2. **Edit `docker-compose.yml`:**
+   - Set the path to your music library in the `volumes` section (e.g. `/path/to/your/music:/music:ro`).
+   - Optionally, adjust ports and config paths as needed.
 
-    ```bash
-    git clone https://github.com/Vansmak/beetiful.git
-    cd beetiful
-    ```
+3. **Start Beetiful:**
+   ```sh
+   docker compose up -d
+   ```
 
-2. **Create a Virtual Environment**
+4. **Open in your browser:**
+   - Visit [http://localhost:3000](http://localhost:3000)
 
-    It's recommended to use a Python virtual environment to keep your dependencies isolated.
+---
 
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
+## Configuration
+- The beets config is stored in the `config` directory (mounted as `/config` in the container).
+- Edit your config using the web UI or by editing `config.yaml` directly.
+- Plugins can be enabled/disabled from the Plugins page.
 
-3. **Install Dependencies**
+---
 
-    Install the required Python packages:
+## Requirements
+- Docker and Docker Compose
+- Your music library (FLAC, MP3, etc.)
 
-    ```bash
-    pip install -r requirements.txt
-    ```
-4. ## Environment Variables
+---
 
-Create a `.env` file in the project root to configure Beets-specific settings. Here's an example:
+## Development
+- The app is a Flask backend with a static HTML/JS frontend.
+- To run locally (without Docker):
+  1. Install Python 3.11 and [beets](https://beets.io/)
+  2. `pip install -r requirements.txt`
+  3. `python app.py`
 
-    ```
-    # .env file
+---
 
-    # Path to the user's Beets configuration directory
-    BEETSDIR=/.config/beets
+## Troubleshooting
+- If lyrics are not showing, ensure your beets library has the `lyrics` field populated. Use the web UI or run:
+  ```sh
+  beet ls -f '$lyrics' id:<track_id>
+  ```
+- For permission issues, check your Docker volume mounts and user permissions.
 
-    # Path to your music library
-    LIBRARY_PATH=/music
+---
 
-    # Add any other environment-specific settings here
-    PORT=
-    ```
-5. **Running the Application
-
-To start the application, you can run the following command from the project root:
-
-```bash
-python app.py
-
-```
-    Open your browser and navigate to `http://127.0.0.1:3001`.
-
-## Usage
-
-- **Command Builder**: Execute standard Beets commands like `import`, `list`, `update`, `modify`, and more. Build commands interactively through the UI.
-- **Library Management**: View your library with sorting and filtering options. Use the pagination buttons to navigate large libraries.
-- **Config Editor**: Edit the Beets configuration directly from the web interface. The `save` button will update the `config.yaml` file.
-
-
-![Unified Music Management](https://github.com/user-attachments/assets/4bc8887a-aee5-4450-a7f1-799c4eaf8c86)
+## License
+MIT
 

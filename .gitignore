@@ -34,3 +34,5 @@ env/
 *.bak
 *~
 
+# My own docker-compose.yml, leaving example in place
+docker-compose.yml

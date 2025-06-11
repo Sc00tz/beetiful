@@ -1,3 +1,6 @@
+/* Main stylesheet for Beetiful web UI
+   Provides dark theme, layout, and component styling for all UI elements */
+
 /* General Body and HTML Styles */
 html, body {
     height: 100%;

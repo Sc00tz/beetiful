@@ -1,3 +1,8 @@
+"""Main Flask application for Beetiful web UI
+
+Initializes app, defines routes, and integrates all services.
+"""
+
 from flask import Flask, jsonify, request, render_template
 import os
 import subprocess
@@ -15,10 +20,12 @@ from config_manager import (
     AVAILABLE_PLUGINS, read_config, write_config, 
     get_installed_plugins, create_default_config
 )
-from lyrics_service import get_track_lyrics, fetch_lyrics_for_track, set_track_lyrics
+from lyrics_service import get_track_lyrics, set_track_lyrics, fetch_lyrics_for_track
+from lrclib_service import parse_duration
 
 load_dotenv()
 
+# Create Flask app
 app = Flask(__name__)
 
 # Get beets binary path
@@ -52,6 +59,18 @@ def format_timestamp(timestamp):
     except:
         return ''
 
+def run_beets_command(args):
+    # Ensure --yes is present for non-interactive mode
+    if isinstance(args, list):
+        if '--yes' not in args and '-y' not in args:
+            args.append('--yes')
+    elif isinstance(args, str):
+        if '--yes' not in args and '-y' not in args:
+            args += ' --yes'
+    # Run the beets command
+    result = subprocess.run(args, capture_output=True, text=True)
+    return result
+
 # --- Routes ---
 
 @app.route('/')
@@ -60,6 +79,7 @@ def index():
 
 @app.route('/api/library')
 def get_library():
+    """Fetches the entire music library from beets."""
     try:
         cmd = [BEETS_BIN, 'list', '--format', '$id\t$title\t$artist\t$album\t$genre\t$year\t$length\t$bitrate\t$path']
         process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
@@ -80,20 +100,11 @@ def get_library():
                     except ValueError:
                         pass
 
-                # Parse length
+                # Parse length for library tracks only, not for lyrics
                 length = None
                 length_str = clean_field(parts[6], 'length')
                 if length_str:
-                    match = re.match(r'(\d+):(\d+(?:\.\d+)?)', length_str)
-                    if match:
-                        minutes = int(match.group(1))
-                        seconds = float(match.group(2))
-                        length = float(minutes * 60 + seconds)
-                    else:
-                        try:
-                            length = float(length_str)
-                        except ValueError:
-                            pass
+                    length = parse_duration(length_str)
 
                 # Parse bitrate
                 bitrate = None
@@ -128,6 +139,7 @@ def get_library():
 
 @app.route('/api/library/edit', methods=['POST'])
 def edit_library_item():
+    """Edits a specific item in the music library."""
     try:
         data = request.json
         item_id = data.get('id')
@@ -157,6 +169,7 @@ def edit_library_item():
 
 @app.route('/api/library/remove', methods=['POST'])
 def remove_library_item():
+    """Removes an item from the music library."""
     try:
         data = request.json
         title = data.get('title')
@@ -186,10 +199,12 @@ def remove_library_item():
 
 @app.route('/api/library/delete', methods=['POST'])
 def delete_library_item():
+    """Deletes an item from the music library (alias for remove)."""
     return remove_library_item()
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def handle_config():
+    """Handles retrieval and updating of the main configuration."""
     if request.method == 'GET':
         config = read_config()
         try:
@@ -221,6 +236,7 @@ def handle_config():
 
 @app.route('/api/plugins', methods=['GET'])
 def get_plugins():
+    """Retrieves the status of all available and installed plugins."""
     config = read_config()
     enabled_plugins = config.get('plugins', [])
     installed_plugins = get_installed_plugins()
@@ -245,6 +261,7 @@ def get_plugins():
 
 @app.route('/api/plugins/enable', methods=['POST'])
 def enable_plugin():
+    """Enables a plugin by adding it to the config."""
     data = request.json
     plugin_name = data.get('plugin_name')
 
@@ -262,6 +279,7 @@ def enable_plugin():
 
 @app.route('/api/plugins/disable', methods=['POST'])
 def disable_plugin():
+    """Disables a plugin by removing it from the config."""
     data = request.json
     plugin_name = data.get('plugin_name')
 
@@ -279,6 +297,7 @@ def disable_plugin():
 
 @app.route('/api/plugins/toggle', methods=['POST'])
 def toggle_plugin():
+    """Toggles a plugin's enabled/disabled state."""
     data = request.json
     plugin_name = data.get('plugin_name')
     enable = data.get('enable')
@@ -302,6 +321,7 @@ def toggle_plugin():
 
 @app.route('/api/plugins/install', methods=['POST'])
 def install_plugin():
+    """Installs a new plugin (if external) or enables a built-in plugin."""
     data = request.json
     plugin_name = data.get('plugin_name')
 
@@ -323,6 +343,7 @@ def install_plugin():
 
 @app.route('/api/plugins/config/<plugin_name>', methods=['GET', 'POST'])
 def handle_plugin_config(plugin_name):
+    """Retrieves or updates the configuration for a specific plugin."""
     if request.method == 'GET':
         config = read_config()
         plugin_config = config.get(plugin_name, {})
@@ -351,6 +372,7 @@ def handle_plugin_config(plugin_name):
 
 @app.route('/api/execute', methods=['POST'])
 def execute_command():
+    """Executes a beets command with the given arguments."""
     data = request.json
     command = data.get('command')
     args_string = data.get('args', '')
@@ -389,6 +411,10 @@ def execute_command():
 
     # Build the full command
     full_cmd = [BEETS_BIN, command] + args
+
+    # Ensure all beets commands are non-interactive by adding '--yes' if not present
+    if command.startswith('beet') and '--yes' not in command and '-y' not in command:
+        command += ' --yes'
     
     try:
         process = subprocess.run(
@@ -418,10 +444,12 @@ def execute_command():
 
 @app.route('/api/command', methods=['POST'])
 def run_command():
+    """Runs a beets command (alias for execute)."""
     return execute_command()
 
 @app.route('/api/browse', methods=['GET'])
 def browse_files():
+    """Browses files and directories at the given path."""
     path = request.args.get('path', '/')
     
     if not is_path_safe(path):
@@ -463,10 +491,19 @@ def browse_files():
 # Lyrics endpoints using the modular service
 @app.route('/api/library/lyrics/<track_id>', methods=['GET', 'POST'])
 def handle_lyrics(track_id):
+    """Retrieves or updates lyrics for a specific track."""
     if request.method == 'GET':
         try:
             result = get_track_lyrics(track_id, BEETS_BIN)
-            return jsonify(result)
+            # Always return a JSON object with a 'lyrics' field containing the lyrics as a string
+            lyrics = ''
+            if isinstance(result, dict):
+                lyrics = result.get('lyrics', '')
+            elif isinstance(result, str):
+                lyrics = result
+            if not isinstance(lyrics, str):
+                lyrics = str(lyrics) if lyrics is not None else ''
+            return jsonify({'lyrics': lyrics})
         except Exception as e:
             return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
     
@@ -475,11 +512,9 @@ def handle_lyrics(track_id):
             data = request.json
             lyrics = data.get('lyrics', '')
             result = set_track_lyrics(track_id, lyrics, BEETS_BIN)
-            
             if 'error' in result:
                 return jsonify(result), result.get('status', 500)
             return jsonify(result)
-            
         except Exception as e:
             return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
@@ -494,6 +529,7 @@ def fetch_lyrics(track_id):
 
 @app.route('/api/stats')
 def get_stats():
+    """Retrieves statistics about the music library from beets."""
     try:
         cmd = [BEETS_BIN, 'stats']
         process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
@@ -507,6 +543,19 @@ def get_stats():
     except Exception as e:
         app.logger.error(f"Error getting stats: {e}")
         return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
+# Custom get_track_lyrics function to fetch only the lyrics field for a track using beets CLI
+def get_track_lyrics(track_id, beets_bin):
+    """Fetch lyrics for a track by ID using beets CLI."""
+    import subprocess
+    try:
+        # Use beets to get only the lyrics field for the given track
+        cmd = [beets_bin, 'ls', '-f', '$lyrics', f'id:{track_id}']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        lyrics = process.stdout.strip()
+        return lyrics
+    except Exception as e:
+        return ''
 
 # Run the app
 port = int(os.getenv('FLASK_PORT', 5000))

@@ -1,6 +1,5 @@
-"""
-Beets utility functions
-"""
+"""Utility functions for Beets integration"""
+
 import os
 import subprocess
 import yaml
@@ -9,24 +8,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_beets_bin():
-    """Determine the beets executable path."""
+    """Get the path to the beets binary."""
+    # Try common paths first
+    common_paths = [
+        '/usr/local/bin/beet',
+        '/usr/bin/beet',
+        '/opt/homebrew/bin/beet',
+        '/home/beetiful/.local/bin/beet'
+    ]
+    
+    for path in common_paths:
+        if os.path.isfile(path):
+            return path
+            
+    # Try which command
     try:
         result = subprocess.run(['which', 'beet'], capture_output=True, text=True)
-        if result.returncode == 0 and result.stdout.strip():
-            return 'beet'
+        if result.returncode == 0:
+            return result.stdout.strip()
     except:
         pass
-    
-    # Fallback to common paths
-    fallback_paths = ['/usr/local/bin/beet', '/usr/bin/beet', 'beet']
-    for path in fallback_paths:
-        try:
-            result = subprocess.run([path, '--version'], capture_output=True, text=True)
-            if result.returncode == 0:
-                return path
-        except:
-            continue
-    
+        
+    # Fall back to just 'beet' and let PATH resolve it
     return 'beet'
 
 def clean_field(value, field_name):

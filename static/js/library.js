@@ -1,6 +1,5 @@
-document.addEventListener('DOMContentLoaded', () => {
-    fetchLibrary();
-});
+// Music library management logic for Beets web UI
+// Handles fetching, displaying, filtering, sorting, and editing tracks
 
 let currentPage = 1;
 const itemsPerPage = 20;
@@ -8,16 +7,15 @@ let libraryData = [];
 let filteredData = [];
 let sortOrder = { column: null, direction: 'asc' };
 
-/**
- * Fetches the music library data from the backend API.
- * Updates global libraryData and filteredData, then displays the first page.
- */
+document.addEventListener('DOMContentLoaded', () => {
+    fetchLibrary();
+});
+
 function fetchLibrary() {
+    showLibrarySpinner();
     fetch('/api/library')
         .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             return response.json();
         })
         .then(data => {
@@ -25,44 +23,33 @@ function fetchLibrary() {
                 libraryData = data.items;
                 applyFilters();
             } else {
-                console.error('Unexpected data format for library:', data);
                 const libraryResults = document.getElementById('libraryResults');
-                if (libraryResults) {
-                    libraryResults.innerHTML = '<tr><td colspan="10">No library data found or unexpected format.</td></tr>';
-                }
+                if (libraryResults) libraryResults.innerHTML = '<tr><td colspan="10">No library data found or unexpected format.</td></tr>';
             }
         })
         .catch(error => {
-            console.error('Error fetching library data:', error);
             const libraryResults = document.getElementById('libraryResults');
-            if (libraryResults) {
-                libraryResults.innerHTML = `<tr><td colspan="10">Error loading library data: ${error.message}. Please ensure the backend is running and Beets library is accessible.</td></tr>`;
-            }
+            if (libraryResults) libraryResults.innerHTML = `<tr><td colspan="10">Error loading library data: ${error.message}. Please ensure the backend is running and Beets library is accessible.</td></tr>`;
         });
 }
 
-/**
- * Renders the current page of filtered and sorted library data to the table.
- */
+function showLibrarySpinner(message = 'Loading library...') {
+    const libraryResults = document.getElementById('libraryResults');
+    if (libraryResults) libraryResults.innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${message}</td></tr>`;
+}
+
 function displayLibrary() {
     const libraryResults = document.getElementById('libraryResults');
-    if (!libraryResults) {
-        console.error('Element with ID "libraryResults" not found');
-        return;
-    }
-    
+    if (!libraryResults) return;
     libraryResults.innerHTML = '';
-
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     const itemsToDisplay = filteredData.slice(startIndex, endIndex);
-
     if (itemsToDisplay.length === 0) {
         libraryResults.innerHTML = '<tr><td colspan="10">No tracks found matching your criteria.</td></tr>';
         updatePagination(0);
         return;
     }
-
     itemsToDisplay.forEach(item => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -88,22 +75,15 @@ function displayLibrary() {
         `;
         libraryResults.appendChild(row);
     });
-
     updatePagination(filteredData.length);
 }
 
-/**
- * Applies filters based on user input and updates the displayed library.
- */
 function applyFilters() {
     const filterInput = document.getElementById('filterInput');
     const searchTerm = filterInput ? filterInput.value.toLowerCase() : '';
-
     const genreFilterElement = document.getElementById('genreFilter');
     const genreFilter = genreFilterElement ? genreFilterElement.value.toLowerCase() : '';
-
-    filteredData = [...libraryData]; 
-
+    filteredData = [...libraryData];
     if (searchTerm) {
         filteredData = filteredData.filter(item =>
             (item.title && item.title.toLowerCase().includes(searchTerm)) ||
@@ -112,50 +92,31 @@ function applyFilters() {
             (item.genre && item.genre.toLowerCase().includes(searchTerm))
         );
     }
-
     if (genreFilter) {
         filteredData = filteredData.filter(item =>
             item.genre && item.genre.toLowerCase().includes(genreFilter)
         );
     }
-
     populateGenreFilter();
     sortData();
     currentPage = 1;
     displayLibrary();
 }
 
-/**
- * Sorts the filtered data based on the current sort order.
- */
 function sortData() {
-    if (!sortOrder.column) {
-        return;
-    }
-
+    if (!sortOrder.column) return;
     const column = sortOrder.column;
     const direction = sortOrder.direction === 'asc' ? 1 : -1;
-
     filteredData.sort((a, b) => {
         const valA = a[column] || '';
         const valB = b[column] || '';
-
-        if (typeof valA === 'string' && typeof valB === 'string') {
-            return valA.localeCompare(valB) * direction;
-        }
-        if (typeof valA === 'number' && typeof valB === 'number') {
-            return (valA - valB) * direction;
-        }
+        if (typeof valA === 'string' && typeof valB === 'string') return valA.localeCompare(valB) * direction;
+        if (typeof valA === 'number' && typeof valB === 'number') return (valA - valB) * direction;
         return String(valA).localeCompare(String(valB)) * direction;
     });
-
     displayLibrary();
 }
 
-/**
- * Handles sorting when a column header is clicked.
- * This function is called from HTML onclick handlers.
- */
 function sortLibrary(column) {
     if (sortOrder.column === column) {
         sortOrder.direction = sortOrder.direction === 'asc' ? 'desc' : 'asc';
@@ -167,17 +128,11 @@ function sortLibrary(column) {
     sortData();
 }
 
-/**
- * Updates the sort indicators (arrows) in the table headers.
- */
 function updateSortIndicators() {
     document.querySelectorAll('.sortable').forEach(header => {
         const column = header.getAttribute('data-sort');
         const icon = header.querySelector('i');
-        if (icon) {
-            icon.remove();
-        }
-
+        if (icon) icon.remove();
         if (sortOrder.column === column) {
             const newIcon = document.createElement('i');
             newIcon.classList.add('fas', sortOrder.direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down', 'ms-2');
@@ -186,27 +141,19 @@ function updateSortIndicators() {
     });
 }
 
-/**
- * Populates the genre filter dropdown with unique genres from the library data.
- */
 function populateGenreFilter() {
     const genreFilter = document.getElementById('genreFilter');
     if (!genreFilter) return;
-    
-    genreFilter.innerHTML = '<option value="">All Genres</option>'; 
-
+    genreFilter.innerHTML = '<option value="">All Genres</option>';
     const genres = new Set();
     filteredData.forEach(item => {
         if (item.genre) {
             item.genre.split(/[,/;]/).forEach(g => {
                 const trimmedGenre = g.trim();
-                if (trimmedGenre) {
-                    genres.add(trimmedGenre);
-                }
+                if (trimmedGenre) genres.add(trimmedGenre);
             });
         }
     });
-
     Array.from(genres).sort().forEach(genre => {
         const option = document.createElement('option');
         option.value = genre.toLowerCase();
@@ -215,38 +162,24 @@ function populateGenreFilter() {
     });
 }
 
-/**
- * Updates the pagination controls based on the total number of items.
- */
 function updatePagination(totalItems) {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
-    
-    // Try both possible IDs for pagination info
     const pageInfoElement = document.getElementById('pageInfo') || 
                            document.querySelector('.text-light span:nth-child(1)') ||
                            document.querySelector('span:contains("Page")');
-    
-    if (pageInfoElement) {
-        pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
-    }
-
+    if (pageInfoElement) pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
     const prevPageBtn = document.getElementById('prevPage');
     const nextPageBtn = document.getElementById('nextPage');
-    
     if (prevPageBtn) {
         prevPageBtn.disabled = currentPage === 1;
         prevPageBtn.onclick = prevPage;
     }
-    
     if (nextPageBtn) {
         nextPageBtn.disabled = currentPage === totalPages || totalPages === 0;
         nextPageBtn.onclick = nextPage;
     }
 }
 
-/**
- * Navigates to the previous page.
- */
 function prevPage() {
     if (currentPage > 1) {
         currentPage--;
@@ -254,9 +187,6 @@ function prevPage() {
     }
 }
 
-/**
- * Navigates to the next page.
- */
 function nextPage() {
     const totalPages = Math.ceil(filteredData.length / itemsPerPage);
     if (currentPage < totalPages) {
@@ -265,29 +195,18 @@ function nextPage() {
     }
 }
 
-/**
- * Formats a length in seconds into a human-readable string (MM:SS).
- */
 function formatLength(seconds) {
-    if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
-        return 'N/A';
-    }
+    if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) return 'N/A';
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
 }
 
-/**
- * Formats bitrate from bits per second to kbps.
- */
 function formatBitrate(bitrate) {
-    if (typeof bitrate !== 'number' || isNaN(bitrate) || bitrate < 0) {
-        return 'N/A';
-    }
+    if (typeof bitrate !== 'number' || isNaN(bitrate) || bitrate < 0) return 'N/A';
     return `${Math.round(bitrate / 1000)} kbps`;
 }
 
-// Modal related functions
 let currentEditItem = null;
 
 function openEditModal(item) {
@@ -298,14 +217,18 @@ function openEditModal(item) {
     document.getElementById('editGenre').value = item.genre || '';
     document.getElementById('editYear').value = item.year || '';
     document.getElementById('editModalLabel').textContent = `Edit: ${item.title || 'N/A'}`;
-
     const editModal = new bootstrap.Modal(document.getElementById('editModal'));
     editModal.show();
 }
 
 function saveChanges() {
     if (!currentEditItem) return;
-
+    const title = document.getElementById('editTitle').value.trim();
+    const artist = document.getElementById('editArtist').value.trim();
+    if (!title || !artist) {
+        alert('Title and Artist are required.');
+        return;
+    }
     const updates = {
         title: document.getElementById('editTitle').value,
         artist: document.getElementById('editArtist').value,
@@ -313,18 +236,13 @@ function saveChanges() {
         genre: document.getElementById('editGenre').value,
         year: document.getElementById('editYear').value,
     };
-
     fetch('/api/library/edit', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: currentEditItem.id, updates: updates })
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-        }
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         return response.json();
     })
     .then(data => {
@@ -334,7 +252,6 @@ function saveChanges() {
         fetchLibrary();
     })
     .catch(error => {
-        console.error('Error saving changes:', error);
         alert(`Error saving changes: ${error.message}`);
     });
 }
@@ -343,53 +260,54 @@ function openLyricsModal(item) {
     document.getElementById('lyricsModalLabel').textContent = `Lyrics: ${item.title || 'N/A'} - ${item.artist || 'N/A'}`;
     const lyricsContent = document.getElementById('lyricsContent');
     lyricsContent.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading lyrics...</div>';
-
-    // Fetch actual lyrics from the backend
     fetch(`/api/library/lyrics/${item.id}`)
         .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             return response.json();
         })
         .then(data => {
-            if (data.lyrics) {
-                // Display the lyrics in a readable format
-                const formattedLyrics = data.lyrics.replace(/\n/g, '<br>');
-                lyricsContent.innerHTML = `
-                    <div class="lyrics-container">
-                        <div class="mb-3">
-                            <button class="btn btn-sm btn-primary me-2" onclick="editLyrics('${item.id}', '${item.title}', '${item.artist}')">
-                                <i class="fas fa-edit"></i> Edit Lyrics
-                            </button>
-                            <button class="btn btn-sm btn-info" onclick="fetchLyrics('${item.id}')">
-                                <i class="fas fa-download"></i> Fetch from Web
-                            </button>
+            let lyrics = '';
+            if (typeof data.lyrics === 'string') {
+                lyrics = data.lyrics;
+            } else if (data.lyrics) {
+                lyrics = String(data.lyrics);
+            }
+            if (lyricsContent) {
+                if (lyrics.trim()) {
+                    const formattedLyrics = lyrics.replace(/\n/g, '<br>');
+                    lyricsContent.innerHTML = `
+                        <div class="lyrics-container">
+                            <div class="mb-3">
+                                <button class="btn btn-sm btn-primary me-2" onclick="editLyrics('${item.id}', '${item.title}', '${item.artist}')">
+                                    <i class="fas fa-edit"></i> Edit Lyrics
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="fetchLyrics('${item.id}')">
+                                    <i class="fas fa-download"></i> Fetch from Web
+                                </button>
+                            </div>
+                            <div class="lyrics-text bg-dark p-3 rounded text-start" style="white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
+                                ${formattedLyrics}
+                            </div>
                         </div>
-                        <div class="lyrics-text bg-dark p-3 rounded text-start" style="white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
-                            ${formattedLyrics}
+                    `;
+                } else {
+                    lyricsContent.innerHTML = `
+                        <div class="text-center text-muted">
+                            <p><i class="fas fa-music"></i> No lyrics found for this track.</p>
+                            <div class="mt-3">
+                                <button class="btn btn-primary me-2" onclick="editLyrics('${item.id}', '${item.title}', '${item.artist}')">
+                                    <i class="fas fa-edit"></i> Add Lyrics Manually
+                                </button>
+                                <button class="btn btn-info" onclick="fetchLyrics('${item.id}')">
+                                    <i class="fas fa-download"></i> Fetch from Web
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                `;
-            } else {
-                // No lyrics found
-                lyricsContent.innerHTML = `
-                    <div class="text-center text-muted">
-                        <p><i class="fas fa-music"></i> No lyrics found for this track.</p>
-                        <div class="mt-3">
-                            <button class="btn btn-primary me-2" onclick="editLyrics('${item.id}', '${item.title}', '${item.artist}')">
-                                <i class="fas fa-edit"></i> Add Lyrics Manually
-                            </button>
-                            <button class="btn btn-info" onclick="fetchLyrics('${item.id}')">
-                                <i class="fas fa-download"></i> Fetch from Web
-                            </button>
-                        </div>
-                    </div>
-                `;
+                    `;
+                }
             }
         })
         .catch(error => {
-            console.error('Error loading lyrics:', error);
             lyricsContent.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle"></i> Error loading lyrics: ${error.message}
@@ -401,23 +319,16 @@ function openLyricsModal(item) {
                 </div>
             `;
         });
-
     const lyricsModal = new bootstrap.Modal(document.getElementById('lyricsModal'));
     lyricsModal.show();
 }
 
 function editLyrics(trackId, title, artist) {
-    // Close the lyrics modal first
     const lyricsModal = bootstrap.Modal.getInstance(document.getElementById('lyricsModal'));
     if (lyricsModal) lyricsModal.hide();
-
-    // Create edit lyrics modal
     const modalId = 'editLyricsModal';
     let modalElement = document.getElementById(modalId);
-    if (modalElement) {
-        modalElement.remove();
-    }
-
+    if (modalElement) modalElement.remove();
     modalElement = document.createElement('div');
     modalElement.className = 'modal fade';
     modalElement.id = modalId;
@@ -443,33 +354,24 @@ function editLyrics(trackId, title, artist) {
         </div>
     `;
     document.body.appendChild(modalElement);
-
-    // Load existing lyrics
     fetch(`/api/library/lyrics/${trackId}`)
         .then(response => response.json())
         .then(data => {
             document.getElementById('lyricsEditor').value = data.lyrics || '';
-        })
-        .catch(error => {
-            console.error('Error loading lyrics for editing:', error);
         });
-
     const editModal = new bootstrap.Modal(modalElement);
     editModal.show();
 }
 
 function saveLyrics(trackId) {
     const lyrics = document.getElementById('lyricsEditor').value;
-    
     fetch(`/api/library/lyrics/${trackId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lyrics: lyrics })
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-        }
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         return response.json();
     })
     .then(data => {
@@ -479,7 +381,6 @@ function saveLyrics(trackId) {
         document.getElementById('editLyricsModal').remove();
     })
     .catch(error => {
-        console.error('Error saving lyrics:', error);
         alert(`Error saving lyrics: ${error.message}`);
     });
 }
@@ -489,24 +390,17 @@ function fetchLyrics(trackId) {
     const originalText = button.innerHTML;
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
     button.disabled = true;
-
-    fetch(`/api/library/fetch-lyrics/${trackId}`, {
-        method: 'POST'
-    })
+    fetch(`/api/library/fetch-lyrics/${trackId}`, { method: 'POST' })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-        }
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         return response.json();
     })
     .then(data => {
         alert('Lyrics fetch completed! Check the lyrics again.');
-        // Refresh the lyrics modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('lyricsModal'));
         if (modal) modal.hide();
     })
     .catch(error => {
-        console.error('Error fetching lyrics:', error);
         alert(`Error fetching lyrics: ${error.message}`);
     })
     .finally(() => {
@@ -515,7 +409,6 @@ function fetchLyrics(trackId) {
     });
 }
 
-// Function called by saveTrackChanges button in HTML
 function saveTrackChanges() {
     saveChanges();
 }
@@ -523,10 +416,7 @@ function saveTrackChanges() {
 function confirmAction(action, title, artist, album) {
     const modalId = 'confirmationModal';
     let modalElement = document.getElementById(modalId);
-    if (modalElement) {
-        modalElement.remove();
-    }
-
+    if (modalElement) modalElement.remove();
     modalElement = document.createElement('div');
     modalElement.className = 'modal fade';
     modalElement.id = modalId;
@@ -553,12 +443,8 @@ function confirmAction(action, title, artist, album) {
         </div>
     `;
     document.body.appendChild(modalElement);
-
     const confirmButton = document.getElementById('confirmActionButton');
-    confirmButton.onclick = () => {
-        performAction(action, title, artist, album);
-    };
-
+    confirmButton.onclick = () => { performAction(action, title, artist, album); };
     const confirmationModal = new bootstrap.Modal(modalElement);
     confirmationModal.show();
 }
@@ -571,9 +457,7 @@ function performAction(action, title, artist, album) {
         body: JSON.stringify({ title, artist, album })
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
-        }
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Unknown error'); });
         return response.json();
     })
     .then(data => {
@@ -581,22 +465,11 @@ function performAction(action, title, artist, album) {
         fetchLibrary();
         const modalElement = document.getElementById('confirmationModal');
         if (modalElement) {
-            bootstrap.Modal.getInstance(modalElement)?.hide();
-            modalElement.remove();
+            const bootstrapModal = bootstrap.Modal.getInstance(modalElement);
+            if (bootstrapModal) bootstrapModal.hide();
         }
     })
     .catch(error => {
-        console.error(`Error ${action}ing track:`, error);
-        alert(`Error ${action}ing track: ${error.message}`);
-        const modalElement = document.getElementById('confirmationModal');
-        if (modalElement) {
-            bootstrap.Modal.getInstance(modalElement)?.hide();
-            modalElement.remove();
-        }
+        alert(`Error performing action: ${error.message}`);
     });
-}
-
-// Function called by saveTrackChanges button in HTML
-function saveTrackChanges() {
-    saveChanges();
 }
