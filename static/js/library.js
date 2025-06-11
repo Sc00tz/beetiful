@@ -473,3 +473,6 @@ function performAction(action, title, artist, album) {
         alert(`Error performing action: ${error.message}`);
     });
 }
+
+// Remove or comment out old table-based library rendering logic if present
+// (The new tabbed view now handles library display)

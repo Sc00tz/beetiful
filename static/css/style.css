@@ -291,3 +291,41 @@ pre.text-black-50 {
     background-color: #343a40 !important;
     border-color: #495057 !important;
 }
+
+/* Library view overhaul styles */
+.artist-card, .album-card {
+  cursor: pointer;
+  background: #23272b;
+  border: 1px solid #444;
+  transition: box-shadow 0.2s;
+  min-height: 220px;
+}
+.artist-card:hover, .album-card:hover {
+  box-shadow: 0 0 0.5rem #0dcaf0;
+  border-color: #0dcaf0;
+}
+.artist-cover, .album-cover {
+  width: 100%;
+  height: 220px;
+  object-fit: contain; /* Show full image, no cropping */
+  background: #222;
+  border-bottom: 1px solid #444;
+}
+#libraryTabs {
+  margin-bottom: 1rem;
+}
+#libraryContent .card-title, #libraryContent .card-body {
+  color: #fff;
+}
+#libraryContent .btn-link {
+  color: #0dcaf0;
+  text-decoration: none;
+}
+#libraryContent .btn-link:hover {
+  text-decoration: underline;
+}
+@media (max-width: 768px) {
+  .artist-cover, .album-cover {
+    height: 120px;
+  }
+}

@@ -3,7 +3,7 @@
 Initializes app, defines routes, and integrates all services.
 """
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, send_file
 import os
 import subprocess
 import yaml
@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
+from urllib.parse import unquote
 
 # Import our modular services
 from beets_utils import get_beets_bin, clean_field, parse_stats
@@ -80,6 +81,9 @@ def index():
 @app.route('/api/library')
 def get_library():
     """Fetches the entire music library from beets."""
+    if not is_beets_db_ready():
+        return jsonify({'error': 'Beets library database not found or not accessible. Please initialize your library.'}), 500
+
     try:
         cmd = [BEETS_BIN, 'list', '--format', '$id\t$title\t$artist\t$album\t$genre\t$year\t$length\t$bitrate\t$path']
         process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
@@ -544,6 +548,185 @@ def get_stats():
         app.logger.error(f"Error getting stats: {e}")
         return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
 
+@app.route('/api/library/artists', methods=['GET'])
+def get_artists():
+    """Return a list of all unique artists with optional cover art (artist.jpg in artist folder)."""
+    if not is_beets_db_ready():
+        return jsonify({'error': 'Beets library database not found or not accessible. Please initialize your library.'}), 500
+    try:
+        cmd = [BEETS_BIN, 'list', '--format', '$artist\t$path']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        artists = {}
+        for line in process.stdout.splitlines():
+            parts = line.strip().split('\t')
+            if len(parts) >= 2 and parts[0] != '$artist':
+                artist = parts[0]
+                path = parts[1]
+                if artist not in artists:
+                    # Look for artist.jpg in the artist's directory
+                    artist_dir = os.path.dirname(os.path.dirname(path))
+                    artist_img = None
+                    for fname in ['artist.jpg', 'folder.jpg', 'cover.jpg']:
+                        candidate = os.path.join(artist_dir, fname)
+                        if os.path.isfile(candidate):
+                            artist_img = candidate
+                            break
+                    artists[artist] = {'name': artist, 'cover_art': artist_img}
+        return jsonify({'artists': list(artists.values())})
+    except Exception as e:
+        app.logger.error(f"Error fetching artists: {e}")
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
+@app.route('/api/library/albums', methods=['GET'])
+def get_albums():
+    """Return a list of all unique albums with artist and cover art."""
+    if not is_beets_db_ready():
+        return jsonify({'error': 'Beets library database not found or not accessible. Please initialize your library.'}), 500
+    try:
+        cmd = [BEETS_BIN, 'list', '--format', '$album\t$artist\t$albumart\t$path']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        seen = set()
+        albums = []
+        for line in process.stdout.splitlines():
+            parts = line.strip().split('\t')
+            if len(parts) >= 3 and parts[0] != '$album' and parts[1] != '$artist':
+                album = parts[0]
+                artist = parts[1]
+                albumart = parts[2] if parts[2] != '$albumart' else None
+                path = parts[3] if len(parts) > 3 else None
+                key = (album, artist)
+                cover_art = albumart
+                # Fallback: look for cover.jpg, front.jpg, folder.jpg in album directory
+                if not cover_art and path:
+                    album_dir = os.path.dirname(path)
+                    for fname in ['cover.jpg', 'front.jpg', 'folder.jpg']:
+                        candidate = os.path.join(album_dir, fname)
+                        if os.path.isfile(candidate):
+                            cover_art = candidate
+                            break
+                if key not in seen:
+                    albums.append({'album': album, 'artist': artist, 'cover_art': cover_art})
+                    seen.add(key)
+        return jsonify({'albums': albums})
+    except Exception as e:
+        app.logger.error(f"Error fetching albums: {e}")
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
+@app.route('/api/library/albums/by-artist/<artist>', methods=['GET'])
+def get_albums_by_artist(artist):
+    """Return all unique albums for a given artist with cover art (case-insensitive match)."""
+    if not is_beets_db_ready():
+        return jsonify({'error': 'Beets library database not found or not accessible. Please initialize your library.'}), 500
+    try:
+        # Decode and normalize artist name
+        artist = unquote(artist).strip().lower()
+        # Get all albums and filter in Python for case-insensitive match, deduplicate by album name
+        cmd = [BEETS_BIN, 'list', '--format', '$album\t$albumart\t$path\t$artist']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        seen = set()
+        albums = []
+        for line in process.stdout.splitlines():
+            parts = line.strip().split('\t')
+            if len(parts) >= 4 and parts[0] != '$album':
+                album = parts[0]
+                albumart = parts[1] if parts[1] != '$albumart' else None
+                path = parts[2] if len(parts) > 2 else None
+                db_artist = parts[3].strip().lower()
+                key = (album, db_artist)
+                if db_artist == artist and key not in seen:
+                    cover_art = albumart
+                    # Fallback: look for cover.jpg, front.jpg, folder.jpg in album directory
+                    if not cover_art and path:
+                        album_dir = os.path.dirname(path)
+                        for fname in ['cover.jpg', 'front.jpg', 'folder.jpg']:
+                            candidate = os.path.join(album_dir, fname)
+                            if os.path.isfile(candidate):
+                                cover_art = candidate
+                                break
+                    albums.append({'album': album, 'cover_art': cover_art})
+                    seen.add(key)
+        return jsonify({'albums': albums})
+    except Exception as e:
+        app.logger.error(f"Error fetching albums by artist: {e}")
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
+@app.route('/api/library/tracks/by-album/<artist>/<album>', methods=['GET'])
+def get_tracks_by_album(artist, album):
+    """Return all tracks for a given album and artist. Fallback to case-insensitive and path-based matching if needed."""
+    if not is_beets_db_ready():
+        return jsonify({'error': 'Beets library database not found or not accessible. Please initialize your library.'}), 500
+    try:
+        from urllib.parse import unquote
+        # Decode and normalize artist and album names
+        artist = unquote(artist).strip().lower()
+        album = unquote(album).strip().lower()
+        # Try to fetch tracks by artist and album name (case-insensitive match in Python)
+        cmd = [BEETS_BIN, 'list', '--format', '$id\t$title\t$artist\t$album\t$genre\t$year\t$length\t$bitrate\t$track\t$path']
+        process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        tracks = []
+        for line in process.stdout.splitlines():
+            parts = line.strip().split('\t')
+            if len(parts) >= 10 and parts[0] != '$id':
+                db_artist = parts[2].strip().lower()
+                db_album = parts[3].strip().lower()
+                if db_artist == artist and db_album == album:
+                    tracks.append({
+                        'id': parts[0],
+                        'title': parts[1],
+                        'artist': parts[2],
+                        'album': parts[3],
+                        'genre': parts[4],
+                        'year': parts[5],
+                        'length': parts[6],
+                        'bitrate': parts[7],
+                        'track': parts[8],
+                        'path': parts[9]
+                    })
+        # Fallback: if no tracks found, try to match by album name only
+        if not tracks:
+            for line in process.stdout.splitlines():
+                parts = line.strip().split('\t')
+                if len(parts) >= 10 and parts[0] != '$id':
+                    db_album = parts[3].strip().lower()
+                    if db_album == album:
+                        tracks.append({
+                            'id': parts[0],
+                            'title': parts[1],
+                            'artist': parts[2],
+                            'album': parts[3],
+                            'genre': parts[4],
+                            'year': parts[5],
+                            'length': parts[6],
+                            'bitrate': parts[7],
+                            'track': parts[8],
+                            'path': parts[9]
+                        })
+        return jsonify({'tracks': tracks})
+    except Exception as e:
+        app.logger.error(f"Error fetching tracks by album: {e}")
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
+@app.route('/api/library/cover/<path:cover_path>', methods=['GET'])
+def get_cover_art(cover_path):
+    """Serve cover art image files from the filesystem, robust to URL encoding and missing leading slash."""
+    from flask import send_file, request
+    import urllib.parse
+    try:
+        # Decode URL-encoded path
+        decoded_path = urllib.parse.unquote(cover_path)
+        # Ensure path starts with /music/
+        if not decoded_path.startswith('/music/'):
+            if decoded_path.startswith('music/'):
+                decoded_path = '/' + decoded_path
+            else:
+                return jsonify({'error': 'Invalid cover art path'}), 400
+        if not os.path.isfile(decoded_path):
+            return jsonify({'error': 'Cover art not found'}), 404
+        return send_file(decoded_path, mimetype='image/jpeg')
+    except Exception as e:
+        app.logger.error(f"Error serving cover art: {e}")
+        return jsonify({'error': f"An unexpected error occurred: {e}"}), 500
+
 # Custom get_track_lyrics function to fetch only the lyrics field for a track using beets CLI
 def get_track_lyrics(track_id, beets_bin):
     """Fetch lyrics for a track by ID using beets CLI."""
@@ -556,6 +739,55 @@ def get_track_lyrics(track_id, beets_bin):
         return lyrics
     except Exception as e:
         return ''
+
+# On startup, check if the beets database exists and is accessible
+BEETS_DB_PATH = '/config/musiclibrary.db'
+def is_beets_db_ready():
+    return os.path.isfile(BEETS_DB_PATH) and os.access(BEETS_DB_PATH, os.R_OK | os.W_OK)
+
+@app.route('/api/library/init', methods=['POST'])
+def init_beets_library():
+    """Initialize the beets library database if missing."""
+    if is_beets_db_ready():
+        return jsonify({'status': 'already-initialized'})
+    try:
+        # Run a harmless beets command to initialize the DB
+        cmd = [BEETS_BIN, 'import', '--quiet', '--pretend', '/music']
+        subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+        if is_beets_db_ready():
+            return jsonify({'status': 'initialized'})
+        else:
+            return jsonify({'error': 'Failed to initialize beets library.'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Initialization failed: {e}'}), 500
+
+@app.route('/api/library/artist-image/<artist>', methods=['POST'])
+def upload_artist_image(artist):
+    """Upload and save an artist image as artist.jpg in the artist's directory (robust matching)."""
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image file provided.'}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file.'}), 400
+    # Decode and normalize artist name
+    artist = unquote(artist).strip().lower()
+    # Find a track for this artist to determine the artist directory (case-insensitive match)
+    cmd = [BEETS_BIN, 'list', '--format', '$path\t$artist']
+    process = subprocess.run(cmd, capture_output=True, text=True, check=True, env=os.environ.copy())
+    first_path = None
+    for line in process.stdout.splitlines():
+        parts = line.strip().split('\t')
+        if len(parts) == 2:
+            path, db_artist = parts
+            if db_artist.strip().lower() == artist:
+                first_path = path
+                break
+    if not first_path:
+        return jsonify({'error': 'Artist not found in library.'}), 404
+    artist_dir = os.path.dirname(os.path.dirname(first_path))
+    save_path = os.path.join(artist_dir, 'artist.jpg')
+    file.save(save_path)
+    return jsonify({'message': 'Artist image uploaded successfully.'})
 
 # Run the app
 port = int(os.getenv('FLASK_PORT', 5000))
